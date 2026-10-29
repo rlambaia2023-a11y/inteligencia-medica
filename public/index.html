@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inteligência Médica — Você médico, saia do chat gpt e venha aprender o que importa</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span>INTELIGÊNCIA MÉDICA</span><small>Inteligência médica, não artificial</small></div>
+  <nav class="top" aria-label="Navegação">
+    <button data-nav="inicio" class="ativo">Início</button>
+    <button data-nav="aulas">Aulas</button>
+    <button data-nav="sala">Sala de Aula</button>
+    <button data-nav="perguntas">Pergunte ao Mestre</button>
+  </nav>
+</header>
+
+<main>
+<section id="secao-inicio" class="secao ativa">
+  <div class="hero">
+    <span class="pill">Para médicos, do básico ao avançado</span>
+    <h1>Inteligência <em>Médica</em></h1>
+    <p class="slogan">Você médico, saia do chat gpt e venha aprender o que importa.</p>
+    <p class="muted">Inteligência médica, não artificial. Aqui você aprende a usar a IA com critério clínico, fonte verificável e responsabilidade — com o mestre ao vivo, na sala, respondendo às suas perguntas.</p>
+    <div class="linha">
+      <button class="btn" onclick="irPara('sala')">Entrar na Sala de Aula</button>
+      <button class="btn sec" onclick="irPara('aulas')">Ver as aulas</button>
+      <button class="btn sec" id="btnCopiarLink">Copiar link da sala</button>
+    </div>
+    <p id="linkSalaTexto" class="muted"></p>
+  </div>
+
+  <div class="cards">
+    <div class="card"><h3>1. Assista às aulas</h3><p>Trilha completa, do básico ao avançado, com áudio narrado, exemplo prático e exercício em cada aula.</p></div>
+    <div class="card"><h3>2. Entre na sala pelo link</h3><p>Uma sala só. O aluno recebe o link, digita o nome e entra com áudio, vídeo e bate-papo.</p></div>
+    <div class="card"><h3>3. Pergunte ao mestre</h3><p>O médico pergunta e o mestre responde. Nada de resposta genérica: pergunta real, resposta de quem ensina.</p></div>
+  </div>
+
+  <h2>A trilha, em 3 níveis</h2>
+  <div class="cards">
+    <div class="card"><h3>Básico</h3><p>Aulas 1 a 4: o que é Inteligência Médica, como a IA pensa, primeiro prompt seguro, privacidade e LGPD.</p></div>
+    <div class="card"><h3>Intermediário</h3><p>Aulas 5 a 8: anamnese, diferencial, exames e documentos — sempre com revisão do médico.</p></div>
+    <div class="card"><h3>Avançado</h3><p>Aulas 9 a 12: protocolos, auditoria da IA, fluxo completo na clínica e projeto final de ensino.</p></div>
+  </div>
+  <p class="aviso"><strong>Regra da casa:</strong> a IA apoia, o médico decide. Nenhuma saída de IA vira conduta sem revisão, fonte e assinatura do médico.</p>
+</section>
+
+<section id="secao-aulas" class="secao">
+  <h2>Aulas — do básico ao avançado</h2>
+  <p class="muted">Clique numa aula para ler, ouvir a narração em áudio e marcar como concluída. Seu progresso fica salvo neste navegador.</p>
+  <p>Progresso: <span id="progressoTexto">0 de 12 aulas concluídas</span></p>
+  <div class="linha">
+    <button class="btn sec" data-filtro="Todos">Todas</button>
+    <button class="btn sec" data-filtro="Básico">Básico</button>
+    <button class="btn sec" data-filtro="Intermediário">Intermediário</button>
+    <button class="btn sec" data-filtro="Avançado">Avançado</button>
+  </div>
+  <div id="listaAulas" class="cards"></div>
+</section>
+
+<section id="secao-aula" class="secao">
+  <button class="btn sec" onclick="irPara('aulas')">← Voltar para as aulas</button>
+  <div id="detalheAula"></div>
+</section>
+
+<section id="secao-sala" class="secao">
+  <div class="sala-clara">
+    <h2>Sala de Aula — ao vivo</h2>
+    <p class="muted">Uma sala só. Envie o link para o aluno: ele digita o nome e entra. Áudio, vídeo, tela compartilhada e bate-papo na mesma página.</p>
+    <div class="linha">
+      <button class="btn" id="btnCopiarLinkSala">Copiar link desta sala</button>
+      <button class="btn sec" id="btnAbrirSala">Abrir sala em nova aba</button>
+    </div>
+    <p id="linkSalaTexto2" class="muted"></p>
+
+    <h3>Escolha o seu fundo</h3>
+    <p class="muted">Fundos limpos, brancos e bonitos, todos com medicina e tecnologia juntos. O fundo fica atrás do seu vídeo, na tela da aula.</p>
+    <div id="fundoPicker" class="fundo-picker"></div>
+
+    <div id="palcoSala" class="palco">
+      <div id="palcoDecor" class="decor"></div>
+      <div class="video-grid">
+        <div class="video-box"><video id="videoLocal" autoplay muted playsinline></video><p id="rotuloLocal">Você — ainda fora da sala</p></div>
+        <div id="videosRemotos"></div>
+      </div>
+    </div>
+
+    <h3>Entrar na sala</h3>
+    <div class="linha">
+      <input id="nomeSala" placeholder="Seu nome (ex.: Dr. Harrison)">
+      <select id="papelSala" aria-label="Papel na sala"><option value="aluno">Aluno</option><option value="professor">Professor / Mestre</option></select>
+    </div>
+    <div class="linha">
+      <button class="btn" id="btnEntrarVideo">Entrar com câmera e microfone</button>
+      <button class="btn sec" id="btnEntrarChat">Entrar só no bate-papo</button>
+      <button class="btn sec" id="btnSairSala">Sair da sala</button>
+    </div>
+    <p id="statusSala" class="muted">Fora da sala. Quem está online aparece abaixo, quando você entrar.</p>
+    <div class="linha">
+      <button class="btn sec" id="btnMic">Microfone: ligado</button>
+      <button class="btn sec" id="btnCam">Câmera: ligada</button>
+      <button class="btn sec" id="btnTela">Compartilhar tela</button>
+      <button class="btn sec" id="btnMao">Levantar a mão</button>
+    </div>
+    <p class="muted">Na sala: <span id="listaOnline">ninguém online ainda</span></p>
+    <p class="muted">Aviso honesto: o vídeo é de pessoa para pessoa, direto no navegador, e precisa de câmera e microfone liberados. Se o vídeo falhar, o bate-papo continua funcionando — a aula não para.</p>
+
+    <h3>Bate-papo da sala</h3>
+    <div class="chat">
+      <div id="chatMsgs" class="chat-msgs"></div>
+      <div class="linha">
+        <input id="chatTexto" placeholder="Escreva no bate-papo da sala...">
+        <button class="btn" id="btnEnviarChat">Enviar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="secao-perguntas" class="secao">
+  <h2>Pergunte ao Mestre</h2>
+  <p class="muted">O médico pergunta, o mestre responde. Pergunta real, resposta de quem ensina — sem resposta genérica de chat.</p>
+  <form id="formPergunta">
+    <input id="pergNome" placeholder="Seu nome">
+    <textarea id="pergTexto" rows="3" placeholder="Sua pergunta para o mestre..." required></textarea>
+    <button class="btn" type="submit">Enviar pergunta</button>
+  </form>
+  <p id="resultadoPergunta"></p>
+  <h3>Perguntas e respostas</h3>
+  <div id="listaPerguntas"></div>
+</section>
+</main>
+
+<footer>
+  <p><strong>Inteligência Médica</strong> — Inteligência médica, não artificial.</p>
+  <p>Você médico, saia do chat gpt e venha aprender o que importa.</p>
+  <p>Contato somente por <a href="mailto:MH.CUIDAR@ICLOUD.COM">MH.CUIDAR@ICLOUD.COM</a></p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

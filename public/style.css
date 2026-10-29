@@ -1,0 +1,30 @@
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#050816;color:#eef2ff;line-height:1.55}
+a{color:#7dd3fc}header.top{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;background:rgba(5,8,22,.92);border-bottom:1px solid #1e2a4a;backdrop-filter:blur(8px)}
+.brand{font-size:20px;font-weight:800;letter-spacing:.5px}.brand span{background:linear-gradient(90deg,#22d3ee,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand small{display:block;font-size:12px;font-weight:600;letter-spacing:1px;color:#94a3b8;text-transform:uppercase}
+nav.top{display:flex;gap:8px;flex-wrap:wrap}nav.top button{background:#0f1a33;color:#eef2ff;border:1px solid #26365e;border-radius:999px;padding:9px 14px;cursor:pointer;font-size:14px}nav.top button.ativo,nav.top button:hover{background:#2563eb;border-color:#2563eb}
+main{max-width:1080px;margin:0 auto;padding:24px 16px 40px}.secao{display:none}.secao.ativa{display:block}
+.hero{padding:34px 26px;border-radius:24px;background:radial-gradient(600px 200px at 20% 0%,rgba(34,211,238,.25),transparent),radial-gradient(600px 240px at 90% 20%,rgba(167,139,250,.28),transparent),#0b1230;border:1px solid #26365e}
+.hero h1{font-size:clamp(30px,6vw,54px);line-height:1.05;margin:8px 0}.hero h1 em{font-style:normal;background:linear-gradient(90deg,#22d3ee,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+.slogan{font-size:clamp(18px,3vw,26px);font-weight:700;margin:14px 0}.muted{color:#94a3b8}.pill{display:inline-block;background:#12224a;border:1px solid #2b4a7a;border-radius:999px;padding:5px 12px;font-size:13px;color:#bfdbfe}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:18px 0}.card{background:#0d1730;border:1px solid #22345c;border-radius:18px;padding:18px}.card h3{margin-top:0}.card button,.btn{background:#2563eb;color:#fff;border:0;border-radius:12px;padding:11px 16px;cursor:pointer;font-size:15px}.btn.sec{background:#16233f;border:1px solid #2b4a7a}.btn.peq{padding:7px 11px;font-size:13px}
+input,textarea,select{width:100%;padding:11px 12px;border-radius:12px;border:1px solid #2b4a7a;background:#0a1328;color:#fff;font-size:15px;margin:6px 0}label{font-weight:600}.linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.linha>*{flex:1;min-width:180px}.linha .btn{flex:0 0 auto}
+.aula{cursor:pointer}.aula:hover{border-color:#38bdf8}.nivel{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#7dd3fc;font-weight:700}.concluida{border-color:#22c55e!important}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:14px 0}.video-box{background:#000;border:1px solid #22345c;border-radius:16px;overflow:hidden;min-height:190px;position:relative}.video-box video{width:100%;height:210px;object-fit:cover;display:block;background:#000}.video-box p{position:absolute;left:10px;bottom:8px;margin:0;background:rgba(0,0,0,.65);padding:4px 10px;border-radius:999px;font-size:13px}
+.chat{border:1px solid #22345c;border-radius:16px;background:#0d1730;padding:14px}.chat-msgs{height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.msg{background:#132244;border-radius:12px;padding:9px 12px}.msg b{color:#7dd3fc}.msg small{color:#94a3b8;display:block;font-size:12px}.msg.sistema{background:#1e293b}
+.aviso{background:#231a05;border:1px solid #92400e;border-radius:14px;padding:13px 16px}.ok{color:#86efac}.erro{color:#fca5a5}
+footer{max-width:1080px;margin:0 auto;padding:22px 16px 36px;color:#94a3b8;border-top:1px solid #1e2a4a;text-align:center}footer strong{color:#eef2ff}
+@media(max-width:640px){.linha>*{min-width:100%}}
+
+/* Sala clara: palco branco e limpo, com fundos temáticos de medicina + tecnologia */
+.sala-clara{background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:22px;padding:18px}
+.sala-clara h2,.sala-clara h3{color:#0f172a}.sala-clara .muted{color:#475569}
+.sala-clara input,.sala-clara select{background:#fff;color:#0f172a;border-color:#cbd5e1}
+.palco{position:relative;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;background:#ffffff;padding:16px;min-height:340px}
+.palco .decor{position:absolute;inset:0;pointer-events:none;opacity:.9}
+.palco .video-grid{position:relative;z-index:1}
+.fundo-picker{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.fundo-picker button{background:#fff;color:#0f172a;border:2px solid #cbd5e1;border-radius:999px;padding:9px 14px;cursor:pointer;font-size:14px}
+.fundo-picker button.ativo{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
+.sala-clara .chat{background:#fff;border-color:#e2e8f0}.sala-clara .msg{background:#f1f5f9;color:#0f172a}.sala-clara .msg b{color:#1d4ed8}.sala-clara .msg small{color:#64748b}
+.sala-clara .video-box{border-color:#e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.10)}

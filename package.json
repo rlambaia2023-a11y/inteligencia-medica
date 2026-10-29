@@ -1,0 +1,1 @@
+{"description":"Inteligência Médica: aulas do básico ao avançado para médicos, com sala única de aula ao vivo por áudio, vídeo e bate-papo. Código próprio, sem dependências.","engines":{"node":">=22"},"name":"inteligencia-medica","private":true,"scripts":{"start":"node server.mjs"},"type":"module","version":"1.0.0"}
