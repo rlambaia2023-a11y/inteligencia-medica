@@ -91,22 +91,49 @@ const AULAS = [
     exercicio: "Projeto final: entregue o roteiro da sua aula. Na sala ao vivo, você apresenta e recebe perguntas dos colegas." },
 ];
 
-function seed() { return { perguntas: [], mensagens: [], contador: 1 }; }
+function seed() { return { perguntas: [], mensagens: [], contador: 1, usuarios: [], professores: [], duvidas: [] }; }
 function carregar() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DATA_FILE)) { const d = seed(); fs.writeFileSync(DATA_FILE, JSON.stringify(d, null, 2)); return d; }
-  try { const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); if (!Array.isArray(d.perguntas)) d.perguntas = []; if (!Array.isArray(d.mensagens)) d.mensagens = []; if (!d.contador) d.contador = 1; return d; }
+  try { const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); if (!Array.isArray(d.perguntas)) d.perguntas = []; if (!Array.isArray(d.mensagens)) d.mensagens = []; if (!d.contador) d.contador = 1; if (!Array.isArray(d.usuarios)) d.usuarios = []; if (!Array.isArray(d.professores)) d.professores = []; if (!Array.isArray(d.duvidas)) d.duvidas = []; return d; }
   catch { return seed(); }
 }
 let db = carregar();
 function salvar() { try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch {} }
-// Acesso à sala: login e senha compartilhados, lidos SÓ das variáveis de
-// ambiente SALA_LOGIN e SALA_SENHA. Nada disso fica no código nem no repo
-// público. Sem as variáveis, a sala fica fechada (falha fechada).
-// Cada login válido gera um token de sessão em memória, usado na entrada
-// por WebSocket e no bate-papo por REST. Reiniciar o servidor invalida
-// os tokens, o que é seguro.
+// Acesso v2: a sala só abre para conta aprovada pelo professor.
+// Cadastro -> verificação de e-mail (token) -> aprovação do professor ->
+// login. Sem conta aprovada e e-mail verificado, não há entrada na sala.
+// Senhas guardadas só com scrypt (sal+hash), nunca em texto aberto.
+// Sessões em memória por cookie HttpOnly (12h); reiniciar o servidor
+// encerra os logins, o que é seguro. Cada entrada na sala gera um token
+// de sala em memória, usado no WebSocket e no bate-papo por REST.
+// O código compartilhado anterior (SALA_LOGIN/SALA_SENHA) foi desativado
+// na v2: ele contornaria a aprovação do professor.
 const salaTokens = new Set();
+const sessoesUsuario = new Map();
+const sessoesProf = new Map();
+const MODELO_IA = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+// Todas as dúvidas vão para este e-mail (notificação ao professor), e a
+// resposta publicada vai diretamente para o e-mail informado no formulário.
+// Envio real só acontece com EMAIL_WEBHOOK_URL configurado; sem ele, o
+// sistema registra a notificação como pendente e o professor responde
+// direto pelo e-mail do usuário, sem fingir envio.
+const EMAIL_NOTIFICACAO_DUVIDAS = "MH.cuidarsaude@gmail.com";
+async function notificarEmail(para, assunto, texto) {
+  if (!process.env.EMAIL_WEBHOOK_URL) return { enviado: false, motivo: "Envio de e-mail não configurado no servidor (falta EMAIL_WEBHOOK_URL)." };
+  try { const r = await fetch(process.env.EMAIL_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ para, assunto, texto }) }); return { enviado: r.ok, motivo: r.ok ? "" : "Provedor de e-mail devolveu erro." }; }
+  catch { return { enviado: false, motivo: "Falha ao chamar o provedor de e-mail." }; }
+}
+const cacheRascunho = new Map();
+function hashSenha(senha) { const sal = crypto.randomBytes(16).toString("hex"); return `scrypt:${sal}:${crypto.scryptSync(senha, sal, 64).toString("hex")}`; }
+function verificarSenha(senha, armazenado) { try { const [, sal, hash] = armazenado.split(":"); return crypto.timingSafeEqual(crypto.scryptSync(senha, sal, 64), Buffer.from(hash, "hex")); } catch { return false; } }
+function lerCookie(req, nome) { const cab = req.headers.cookie || ""; const item = cab.split(";").map((s) => s.trim()).find((s) => s.startsWith(nome + "=")); return item ? decodeURIComponent(item.slice(nome.length + 1)) : ""; }
+function sessaoValida(mapa, req, nomeCookie) { const token = lerCookie(req, nomeCookie); if (!token) return null; const s = mapa.get(token); if (!s || s.expiraEm < Date.now()) { mapa.delete(token); return null; } return s; }
+function usuarioDaSessao(req) { const s = sessaoValida(sessoesUsuario, req, "sessao_usuario"); if (!s) return null; return db.usuarios.find((u) => u.id === s.usuarioId) || null; }
+function profDaSessao(req) { const s = sessaoValida(sessoesProf, req, "sessao_prof"); if (!s) return null; return db.professores.find((p) => p.id === s.profId) || null; }
+function usuarioPublico(u) { if (!u) return null; const { senhaHash, tokenVerificacao, ...pub } = u; return pub; }
+function definirCookie(res, nome, token) { res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Set-Cookie": `${nome}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${12 * 60 * 60}` }); }
+function limparCookie(res, nome) { res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Set-Cookie": `${nome}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0` }); }
 function lerCorpo(req) {
   return new Promise((resolve) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { resolve(b ? JSON.parse(b) : {}); } catch { resolve({}); } }); });
 }
@@ -148,7 +175,7 @@ function wsProcessar(socket, estado, chunk) {
     if (opcode !== 1) continue;
     let msg; try { msg = JSON.parse(payload.toString("utf8")); } catch { continue; }
     if (msg.type === "join" && !estado.peerId) {
-      if (!salaTokens.has(msg.token)) { wsEnviar(socket, { type: "erro", mensagem: "Entre na sala com login e senha antes de entrar no vídeo e no bate-papo." }); setTimeout(() => { try { socket.destroy(); } catch {} }, 100); return; }
+      if (!salaTokens.has(msg.token)) { wsEnviar(socket, { type: "erro", mensagem: "Entre na sala com uma conta aprovada pelo professor." }); setTimeout(() => { try { socket.destroy(); } catch {} }, 100); return; }
       const peerId = crypto.randomUUID();
       estado.peerId = peerId; estado.sala = SALA; estado.nome = limpo(msg.nome, 80) || "Aluno";
       const existentes = [...peers.values()].filter((p) => p.sala === SALA).map((p) => ({ peerId: p.peerId, nome: p.nome, papel: p.papel }));
@@ -173,18 +200,138 @@ const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const rota = url.pathname;
-  if (rota === "/api/health") return enviar(res, 200, { ok: true, servico: "inteligencia-medica", versao: "v1", aulas: AULAS.length, perguntas: db.perguntas.length, mensagens: db.mensagens.length, onlineNaSala: [...peers.values()].filter((p) => p.sala === SALA).length });
+  if (rota === "/api/health") return enviar(res, 200, { ok: true, servico: "inteligencia-medica", versao: "v2", aulas: AULAS.length, perguntas: db.perguntas.length, duvidasPublicadas: db.duvidas.filter((d) => d.publicada).length, usuarios: db.usuarios.length, usuariosAprovados: db.usuarios.filter((u) => u.status === "aprovado").length, mensagens: db.mensagens.length, ia_configurada: Boolean(process.env.GEMINI_API_KEY), modelo_ia: MODELO_IA, onlineNaSala: [...peers.values()].filter((p) => p.sala === SALA).length });
   if (rota === "/api/aulas") return enviar(res, 200, { ok: true, aulas: AULAS });
-  if (rota === "/api/sala") return enviar(res, 200, { ok: true, sala: { codigo: SALA, titulo: "Sala de Aula — Inteligência Médica", acessoProtegido: true, online: [...peers.values()].filter((p) => p.sala === SALA).map((p) => p.nome), link: "/#sala" }, mensagens: salaTokens.has(url.searchParams.get("token")) ? db.mensagens.slice(-50) : [] });
-  if (req.method === "POST" && rota === "/api/sala/entrar") {
-    const b = await lerCorpo(req);
-    const loginEsperado = process.env.SALA_LOGIN || "";
-    const senhaEsperada = process.env.SALA_SENHA || "";
-    if (!loginEsperado || !senhaEsperada) return enviar(res, 503, { ok: false, erro: "Sala ainda não configurada pelo professor. Tente de novo mais tarde." });
-    if (limpo(b.login, 80) !== loginEsperado || limpo(b.senha, 200) !== senhaEsperada) return enviar(res, 401, { ok: false, erro: "Login ou senha incorretos." });
+  if (rota === "/api/sala") return enviar(res, 200, { ok: true, sala: { codigo: SALA, titulo: "Sala de Aula — Inteligência Médica", acesso: "conta_aprovada", acessoProtegido: true, online: [...peers.values()].filter((p) => p.sala === SALA).map((p) => p.nome), link: "/#sala" }, mensagens: salaTokens.has(url.searchParams.get("token")) ? db.mensagens.slice(-50) : [] });
+  // Entrada na sala só para conta aprovada (usuário) ou professor logado.
+  if (req.method === "POST" && rota === "/api/sala/entrar-usuario") {
+    const usuario = usuarioDaSessao(req);
+    const prof = profDaSessao(req);
+    if (!usuario && !prof) return enviar(res, 401, { ok: false, erro: "Faça login com uma conta aprovada para entrar na sala." });
+    if (usuario && (usuario.status !== "aprovado" || !usuario.emailVerificado)) return enviar(res, 403, { ok: false, erro: "Sua conta ainda não foi aprovada pelo professor ou seu e-mail ainda não foi verificado." });
     const token = crypto.randomUUID();
     salaTokens.add(token);
-    return enviar(res, 200, { ok: true, token });
+    return enviar(res, 200, { ok: true, token, nome: usuario ? usuario.nome : "Professor", papel: usuario ? "aluno" : "professor" });
+  }
+  if (req.method === "GET" && rota === "/api/usuario/eu") {
+    const u = usuarioDaSessao(req);
+    return enviar(res, 200, { ok: true, logado: Boolean(u), usuario: usuarioPublico(u) });
+  }
+  if (req.method === "GET" && rota === "/api/professor/eu") {
+    const p = profDaSessao(req);
+    return enviar(res, 200, { ok: true, temConta: db.professores.length > 0, logado: Boolean(p), email: p?.email || "" });
+  }
+  if (req.method === "POST" && rota === "/api/cadastro") {
+    const b = await lerCorpo(req);
+    const nome = limpo(b.nome, 120), email = limpo(b.email, 120).toLowerCase(), crm = limpo(b.crm, 30), uf = limpo(b.uf, 5).toUpperCase(), esp = limpo(b.especialidade, 80), tel = limpo(b.telefone, 30);
+    if (!nome || !email.includes("@") || !crm || !uf || !esp || !b.senha || String(b.senha).length < 8) return enviar(res, 400, { ok: false, erro: "Preencha nome completo, e-mail válido, CRM, UF, especialidade e uma senha com pelo menos 8 caracteres." });
+    if (db.usuarios.find((u) => u.email === email)) return enviar(res, 409, { ok: false, erro: "Este e-mail já tem cadastro. Use a página Entrar." });
+    const u = { id: db.contador++, nome, email, crm, uf, especialidade: esp, telefone: tel, senhaHash: hashSenha(String(b.senha)), emailVerificado: false, tokenVerificacao: crypto.randomUUID(), status: "pendente", criadoEm: new Date().toISOString(), aprovadoEm: "" };
+    db.usuarios.push(u); salvar();
+    // Envio de e-mail: honesto, sem fingir. Sem provedor configurado, o
+    // token fica guardado e o professor valida o e-mail na aprovação.
+    // Com EMAIL_WEBHOOK_URL, o link é enviado por esse provedor.
+    let emailEnviado = false;
+    if (process.env.EMAIL_WEBHOOK_URL) {
+      try { const r = await fetch(process.env.EMAIL_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ para: email, assunto: "Confirme seu e-mail — Inteligência Médica", texto: `Olá ${nome}, confirme seu e-mail abrindo este link: /verificar?token=${u.tokenVerificacao}` }) }); emailEnviado = r.ok; } catch { emailEnviado = false; }
+    }
+    return enviar(res, 201, { ok: true, emailEnviado, mensagem: emailEnviado ? "Cadastro criado. Abra o link enviado para o seu e-mail e aguarde a aprovação do professor." : "Cadastro criado e aguardando validação. O envio de e-mail ainda não está configurado no servidor, então o professor valida seu e-mail e seu acesso na área de aprovação — sem isso, sua conta não entra na sala." });
+  }
+  if (req.method === "POST" && rota === "/api/verificar-email") {
+    const b = await lerCorpo(req);
+    const u = db.usuarios.find((x) => x.tokenVerificacao === limpo(b.token, 100));
+    if (!u) return enviar(res, 404, { ok: false, erro: "Link de verificação inválido ou já usado." });
+    u.emailVerificado = true; u.tokenVerificacao = ""; salvar();
+    return enviar(res, 200, { ok: true, mensagem: "E-mail confirmado. Agora aguarde a aprovação do professor para entrar." });
+  }
+  if (req.method === "POST" && rota === "/api/login") {
+    const b = await lerCorpo(req);
+    const u = db.usuarios.find((x) => x.email === limpo(b.email, 120).toLowerCase());
+    if (!u || !verificarSenha(String(b.senha || ""), u.senhaHash)) return enviar(res, 401, { ok: false, erro: "E-mail ou senha incorretos." });
+    if (!u.emailVerificado) return enviar(res, 403, { ok: false, erro: "Confirme seu e-mail ou aguarde a validação do professor." });
+    if (u.status !== "aprovado") return enviar(res, 403, { ok: false, erro: "Seu cadastro ainda está aguardando aprovação do professor." });
+    const token = crypto.randomUUID(); sessoesUsuario.set(token, { usuarioId: u.id, expiraEm: Date.now() + 12 * 60 * 60 * 1000 });
+    definirCookie(res, "sessao_usuario", token); return res.end(JSON.stringify({ ok: true, usuario: usuarioPublico(u) }));
+  }
+  if (req.method === "POST" && rota === "/api/logout") { sessoesUsuario.delete(lerCookie(req, "sessao_usuario")); limparCookie(res, "sessao_usuario"); return res.end(JSON.stringify({ ok: true })); }
+  if (req.method === "POST" && rota === "/api/professor/cadastro") {
+    const b = await lerCorpo(req);
+    if (db.professores.length > 0) return enviar(res, 403, { ok: false, erro: "Já existe uma conta de professor. Use o login." });
+    if (!limpo(b.email, 120).includes("@") || !b.senha || String(b.senha).length < 8) return enviar(res, 400, { ok: false, erro: "Informe um e-mail válido e uma senha com pelo menos 8 caracteres." });
+    db.professores.push({ id: db.contador++, email: limpo(b.email, 120).toLowerCase(), senhaHash: hashSenha(String(b.senha)), criadoEm: new Date().toISOString() }); salvar();
+    return enviar(res, 201, { ok: true, mensagem: "Conta do professor criada. Faça login para aprovar cadastros e dúvidas." });
+  }
+  if (req.method === "POST" && rota === "/api/professor/login") {
+    const b = await lerCorpo(req);
+    const p = db.professores.find((x) => x.email === limpo(b.email, 120).toLowerCase());
+    if (!p || !verificarSenha(String(b.senha || ""), p.senhaHash)) return enviar(res, 401, { ok: false, erro: "E-mail ou senha incorretos." });
+    const token = crypto.randomUUID(); sessoesProf.set(token, { profId: p.id, expiraEm: Date.now() + 12 * 60 * 60 * 1000 });
+    definirCookie(res, "sessao_prof", token); return res.end(JSON.stringify({ ok: true, email: p.email }));
+  }
+  if (req.method === "POST" && rota === "/api/professor/logout") { sessoesProf.delete(lerCookie(req, "sessao_prof")); limparCookie(res, "sessao_prof"); return res.end(JSON.stringify({ ok: true })); }
+  if (req.method === "GET" && rota === "/api/professor/cadastros") {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    return enviar(res, 200, { ok: true, usuarios: db.usuarios.map(usuarioPublico).reverse() });
+  }
+  if (req.method === "POST" && rota.startsWith("/api/professor/cadastros/")) {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    const partes = rota.split("/"); const id = Number(partes[4]); const acao = partes[5];
+    const u = db.usuarios.find((x) => x.id === id); if (!u) return enviar(res, 404, { ok: false, erro: "Cadastro não encontrado." });
+    if (acao === "aprovar") { u.status = "aprovado"; u.aprovadoEm = new Date().toISOString(); }
+    else if (acao === "rejeitar") { u.status = "rejeitado"; }
+    else if (acao === "validar-email") { u.emailVerificado = true; u.tokenVerificacao = ""; }
+    else return enviar(res, 400, { ok: false, erro: "Ação desconhecida." });
+    salvar(); return enviar(res, 200, { ok: true, usuario: usuarioPublico(u) });
+  }
+  // Tire suas dúvidas: só dúvida publicada aparece para todos, e só com
+  // resposta + fonte científica + cruzamento de dados, aprovada pelo professor.
+  if (req.method === "GET" && rota === "/api/duvidas") {
+    // Público: e-mail do usuário NUNCA aparece aqui, só na área do professor.
+    return enviar(res, 200, { ok: true, duvidas: db.duvidas.filter((d) => d.publicada).map((d) => ({ id: d.id, nome: d.nome, especialidade: d.especialidade, duvida: d.duvida, resposta: d.resposta, fontes: d.fontes, cruzamento: d.cruzamento, confianca: d.confianca, publicada: d.publicada, em: d.em, respondidoEm: d.respondidoEm })).reverse() });
+  }
+  if (req.method === "POST" && rota === "/api/duvidas") {
+    const b = await lerCorpo(req);
+    if (!limpo(b.duvida, 2000)) return enviar(res, 400, { ok: false, erro: "Escreva a sua dúvida." });
+    const usuario = usuarioDaSessao(req);
+    const emailDuvida = limpo(b.email, 120).toLowerCase() || (usuario?.email || "");
+    if (!emailDuvida.includes("@")) return enviar(res, 400, { ok: false, erro: "Informe seu e-mail no formulário: a resposta será enviada diretamente para ele." });
+    const d = { id: db.contador++, nome: limpo(b.nome, 120) || (usuario?.nome || "Médico"), email: emailDuvida, especialidade: limpo(b.especialidade, 80) || (usuario?.especialidade || ""), duvida: limpo(b.duvida, 2000), usuarioId: usuario?.id || null, resposta: "", fontes: [], cruzamento: "", confianca: "", rascunhoIA: "", publicada: false, em: new Date().toISOString(), respondidoEm: "", notificacaoProfessor: { para: EMAIL_NOTIFICACAO_DUVIDAS, enviada: false, motivo: "" }, respostaEnviadaParaUsuario: false };
+    db.duvidas.push(d);
+    const notif = await notificarEmail(EMAIL_NOTIFICACAO_DUVIDAS, `Nova dúvida — Inteligência Médica (id ${d.id})`, `Nova dúvida recebida.\n\nDe: ${d.nome} (${d.email})\nEspecialidade: ${d.especialidade}\n\nDúvida:\n${d.duvida}\n\nResponda na área do professor (/#professor). A resposta publicada vai diretamente para ${d.email}.`);
+    d.notificacaoProfessor = { para: EMAIL_NOTIFICACAO_DUVIDAS, enviada: notif.enviado, motivo: notif.motivo };
+    salvar();
+    return enviar(res, 201, { ok: true, duvida: { id: d.id, nome: d.nome, duvida: d.duvida, publicada: false }, notificacaoProfessorEnviada: notif.enviado, mensagem: notif.enviado ? "Dúvida enviada para o professor e, depois de aprovada, a resposta vai diretamente para o seu e-mail." : "Dúvida registrada e visível para o professor na área de aprovação. O envio automático por e-mail ainda não está configurado no servidor, então o professor responde diretamente pelo seu e-mail — sem isso, sua dúvida não fica sem resposta." });
+  }
+  if (req.method === "GET" && rota === "/api/professor/duvidas") {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    return enviar(res, 200, { ok: true, duvidas: [...db.duvidas].reverse() });
+  }
+  if (req.method === "POST" && rota.startsWith("/api/professor/duvidas/") && rota.endsWith("/rascunho-ia")) {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    const id = Number(rota.split("/")[4]);
+    const d = db.duvidas.find((x) => x.id === id); if (!d) return enviar(res, 404, { ok: false, erro: "Dúvida não encontrada." });
+    if (cacheRascunho.has(d.duvida)) { d.rascunhoIA = cacheRascunho.get(d.duvida); salvar(); return enviar(res, 200, { ok: true, cache: true, modelo: MODELO_IA, rascunho: d.rascunhoIA }); }
+    if (!process.env.GEMINI_API_KEY) return enviar(res, 200, { ok: false, ia_disponivel: false, mensagem: "IA não configurada. Configure GEMINI_API_KEY para gerar o rascunho — sem chave, nenhum rascunho é inventado." });
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_IA}:generateContent?key=${process.env.GEMINI_API_KEY}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: `Você ajuda um professor de medicina a responder uma dúvida de médico, para ensino. Responda em pt-BR, de forma clara e responsável. Regras obrigatórias: cite SOMENTE diretrizes e fontes oficiais ou científicas reais que você conhece com segurança; se não tiver fonte segura, diga explicitamente que não há fonte segura e não invente referência, autor, ano ou link. Compare pelo menos duas fontes ou perspectivas (cruzamento de dados) e sinalize onde elas divergem ou onde falta dado. Não feche diagnóstico de paciente específico, não prescreva dose sem checagem, e termine com: confiança (alta/média/baixa) e o que o médico deve confirmar antes de usar. Dúvida anonimizada: ${d.duvida}` }] }] }) });
+      if (r.status === 429) return enviar(res, 429, { ok: false, erro: "Cota do Gemini esgotada. O sistema parou aqui, sem tentar outro modelo." });
+      const j = await r.json(); const texto = j.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
+      if (!texto) return enviar(res, 502, { ok: false, erro: "A IA não devolveu um rascunho. Tente de novo mais tarde." });
+      cacheRascunho.set(d.duvida, texto); d.rascunhoIA = texto; salvar();
+      return enviar(res, 200, { ok: true, cache: false, modelo: MODELO_IA, rascunho: texto });
+    } catch { return enviar(res, 502, { ok: false, erro: "Falha ao chamar a IA. Nenhum rascunho foi salvo." }); }
+  }
+  if (req.method === "POST" && rota.startsWith("/api/professor/duvidas/") && rota.endsWith("/responder")) {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    const id = Number(rota.split("/")[4]);
+    const d = db.duvidas.find((x) => x.id === id); if (!d) return enviar(res, 404, { ok: false, erro: "Dúvida não encontrada." });
+    const b = await lerCorpo(req);
+    const fontes = String(b.fontes || "").split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!limpo(b.resposta, 5000) || fontes.length < 1 || !limpo(b.cruzamento, 2000) || !limpo(b.confianca, 20)) return enviar(res, 400, { ok: false, erro: "Para publicar, preencha resposta, pelo menos uma fonte científica, cruzamento de dados e confiança. Sem isso, a dúvida não é publicada." });
+    d.resposta = limpo(b.resposta, 5000); d.fontes = fontes; d.cruzamento = limpo(b.cruzamento, 2000); d.confianca = limpo(b.confianca, 20); d.publicada = true; d.respondidoEm = new Date().toISOString();
+    const envioResposta = await notificarEmail(d.email, "Resposta à sua dúvida — Inteligência Médica", `Olá ${d.nome},\n\nSua dúvida:\n${d.duvida}\n\nResposta do professor:\n${d.resposta}\n\nEmbasamento científico:\n${fontes.map((f) => `- ${f}`).join("\n")}\n\nCruzamento de dados:\n${d.cruzamento}\n\nConfiança: ${d.confianca}\n\nA resposta também está publicada em Tire suas dúvidas. A IA apoia, o médico decide.`);
+    d.respostaEnviadaParaUsuario = envioResposta.enviado; salvar();
+    return enviar(res, 200, { ok: true, duvida: d, respostaEnviadaParaUsuario: envioResposta.enviado, avisoEmail: envioResposta.enviado ? "" : "Resposta publicada na página, mas o envio por e-mail não foi concluído (" + envioResposta.motivo + "). Use o botão de responder por e-mail na área do professor." });
   }
   if (req.method === "GET" && rota === "/api/perguntas") return enviar(res, 200, { ok: true, perguntas: [...db.perguntas].reverse() });
   if (req.method === "POST" && rota === "/api/perguntas") {
@@ -204,7 +351,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && rota === "/api/chat") {
     const b = await lerCorpo(req);
-    if (!salaTokens.has(b.token)) return enviar(res, 401, { ok: false, erro: "Entre na sala com login e senha antes de escrever no bate-papo." });
+    if (!salaTokens.has(b.token)) return enviar(res, 401, { ok: false, erro: "Entre na sala com uma conta aprovada pelo professor antes de escrever no bate-papo." });
     const texto = limpo(b.texto, 500); if (!texto) return enviar(res, 400, { ok: false, erro: "Escreva a mensagem." });
     const m = { id: db.contador++, nome: limpo(b.nome, 80) || "Aluno", texto, em: new Date().toISOString() };
     db.mensagens.push(m); if (db.mensagens.length > 200) db.mensagens = db.mensagens.slice(-200); salvar();
@@ -230,4 +377,4 @@ server.on("upgrade", (req, socket) => {
   socket.on("close", sair); socket.on("error", sair);
 });
 
-server.listen(PORT, () => console.log(`Inteligência Médica v1 em http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Inteligência Médica v2 em http://localhost:${PORT}`));

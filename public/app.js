@@ -46,8 +46,12 @@ window.irPara = irPara;
 function mostrar() {
   const hash = (location.hash || "#inicio").replace("#", "");
   let secao = "inicio";
-  if (hash === "aulas" || hash === "sala" || hash === "perguntas" || hash === "perguntar" || hash === "pergunta") secao = hash === "aulas" || hash === "sala" ? hash : "perguntas";
+  if (["inicio", "aulas", "sala", "duvidas", "cadastro", "entrar", "professor"].includes(hash)) secao = hash;
+  else if (hash === "perguntas" || hash === "perguntar" || hash === "pergunta") secao = "duvidas";
   else if (hash.startsWith("aula-")) { secao = "aula"; mostrarAula(Number(hash.replace("aula-", ""))); }
+  if (secao === "duvidas") carregarDuvidas();
+  if (secao === "entrar") atualizarInfoUsuario();
+  if (secao === "professor") atualizarPainelProf();
   document.querySelectorAll(".secao").forEach((s) => s.classList.remove("ativa"));
   const alvo = document.getElementById("secao-" + secao);
   if (alvo) alvo.classList.add("ativa");
@@ -115,20 +119,20 @@ document.querySelectorAll("[data-filtro]").forEach((b) => b.onclick = () => { fi
 let ws = null, meuPeerId = null, localStream = null, cameraTrackOriginal = null;
 let salaToken = sessionStorage.getItem("im-sala-token") || "";
 function atualizarBloqueio() { document.body.classList.toggle("sala-bloqueada", !salaToken); }
-async function loginSala() {
-  const login = document.getElementById("loginSala").value.trim();
-  const senha = document.getElementById("senhaSala").value;
-  const st = document.getElementById("statusLoginSala");
-  st.textContent = "Verificando acesso...";
+async function liberarSala() {
+  const st = document.getElementById("statusLiberarSala");
+  st.textContent = "Verificando sua conta aprovada...";
   try {
-    const r = await fetch("/api/sala/entrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, senha }) });
+    const r = await fetch("/api/sala/entrar-usuario", { method: "POST" });
     const j = await r.json();
-    if (!j.ok || !j.token) { st.textContent = j.erro || "Login ou senha incorretos."; st.className = "erro"; return; }
+    if (!j.ok || !j.token) { st.textContent = j.erro || "Sua conta ainda não está aprovada. Faça cadastro e aguarde o professor."; st.className = "erro"; return; }
     salaToken = j.token; sessionStorage.setItem("im-sala-token", salaToken);
+    document.getElementById("nomeSala").value = j.nome || "";
+    document.getElementById("papelSala").value = j.papel || "aluno";
     atualizarBloqueio();
     st.textContent = "Acesso liberado. Agora digite seu nome e entre na sala.";
     st.className = "ok";
-  } catch { st.textContent = "Não consegui verificar o acesso. Tente de novo."; st.className = "erro"; }
+  } catch { st.textContent = "Não consegui verificar sua conta. Tente de novo."; st.className = "erro"; }
 }
 let pcs = new Map(), salaAtiva = false, micLigado = true, camLigada = true, compartilhando = false, telaStream = null;
 let chatVistos = new Set(), pollTimer = null;
@@ -225,7 +229,7 @@ function iniciarPoll() {
   }, 4000);
 }
 async function entrarSala(comVideo) {
-  if (!salaToken) { alert("Entre primeiro com o login e a senha da sala."); atualizarBloqueio(); return; }
+  if (!salaToken) { alert("Primeiro libere sua entrada na sala com uma conta aprovada pelo professor."); atualizarBloqueio(); return; }
   const nome = document.getElementById("nomeSala").value.trim() || "Aluno";
   const papel = document.getElementById("papelSala").value;
   salaAtiva = true;
@@ -246,8 +250,7 @@ async function entrarSala(comVideo) {
   conectarWS(nome, papel);
   iniciarPoll();
 }
-document.getElementById("btnLoginSala").onclick = loginSala;
-document.getElementById("senhaSala").addEventListener("keydown", (e) => { if (e.key === "Enter") loginSala(); });
+document.getElementById("btnLiberarSala").onclick = liberarSala;
 document.getElementById("btnEntrarVideo").onclick = () => entrarSala(true);
 document.getElementById("btnEntrarChat").onclick = () => entrarSala(false);
 document.getElementById("btnSairSala").onclick = () => {
@@ -313,41 +316,133 @@ document.getElementById("btnAbrirSala").onclick = () => window.open(linkSala(), 
 document.getElementById("linkSalaTexto").textContent = "Link da sala: " + linkSala();
 document.getElementById("linkSalaTexto2").textContent = "Link da sala: " + linkSala();
 
-// ---- Perguntas ao mestre ----
-async function carregarPerguntas() {
+// ---- Tire suas dúvidas (publicadas, com fonte e cruzamento) ----
+async function carregarDuvidas() {
   try {
-    const r = await fetch("/api/perguntas"); const j = await r.json();
-    const el = document.getElementById("listaPerguntas"); el.innerHTML = "";
-    (j.perguntas || []).forEach((p) => {
-      const d = document.createElement("div"); d.className = "card";
-      const titulo = document.createElement("p"); const bn = document.createElement("b"); bn.textContent = p.nome; titulo.append(bn, document.createTextNode(" perguntou:"));
-      const corpo = document.createElement("p"); corpo.textContent = p.pergunta;
-      d.append(titulo, corpo);
-      if (p.resposta) {
-        const rEl = document.createElement("p"); rEl.innerHTML = "<strong>Resposta do mestre:</strong> "; rEl.appendChild(document.createTextNode(p.resposta)); d.appendChild(rEl);
-      } else {
-        d.innerHTML += `<textarea rows="2" placeholder="Resposta do mestre..." id="resp-${p.id}"></textarea><button class="btn sec" type="button">Responder como mestre</button>`;
-        d.querySelector("button").onclick = async () => {
-          const texto = document.getElementById("resp-" + p.id).value.trim();
-          if (!texto) return;
-          await fetch(`/api/perguntas/${p.id}/resposta`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resposta: texto }) });
-          carregarPerguntas();
-        };
-      }
-      el.appendChild(d);
+    const r = await fetch("/api/duvidas"); const j = await r.json();
+    const el = document.getElementById("listaDuvidas"); el.innerHTML = "";
+    if (!(j.duvidas || []).length) { el.innerHTML = "<p class='muted'>Ainda não há dúvida publicada. Envie a sua acima — ela aparece aqui depois da resposta do professor, com fonte e cruzamento.</p>"; return; }
+    (j.duvidas || []).forEach((d) => {
+      const card = document.createElement("div"); card.className = "card";
+      const t = document.createElement("p"); const b = document.createElement("b"); b.textContent = d.nome; t.append(b, document.createTextNode(" perguntou:"));
+      const q = document.createElement("p"); q.textContent = d.duvida;
+      const a = document.createElement("p"); const ab = document.createElement("b"); ab.textContent = "Resposta do professor: "; a.append(ab, document.createTextNode(d.resposta));
+      const f = document.createElement("div"); f.innerHTML = "<strong>Embasamento científico (fontes):</strong><ul></ul>";
+      (d.fontes || []).forEach((fonte) => { const li = document.createElement("li"); li.textContent = fonte; f.querySelector("ul").appendChild(li); });
+      const c = document.createElement("p"); const cb = document.createElement("b"); cb.textContent = "Cruzamento de dados: "; c.append(cb, document.createTextNode(d.cruzamento));
+      const conf = document.createElement("p"); conf.className = "muted"; conf.textContent = `Confiança: ${d.confianca} · Resposta revisada e aprovada pelo professor${d.respondidoEm ? " em " + new Date(d.respondidoEm).toLocaleDateString("pt-BR") : ""}.`;
+      card.append(t, q, a, f, c, conf); el.appendChild(card);
     });
   } catch {}
 }
-document.getElementById("formPergunta").addEventListener("submit", async (e) => {
+document.getElementById("formDuvida").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const nome = document.getElementById("pergNome").value.trim() || "Médico aluno";
-  const pergunta = document.getElementById("pergTexto").value.trim();
-  const r = await fetch("/api/perguntas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome, pergunta }) });
+  const nome = document.getElementById("duvNome").value.trim();
+  const email = document.getElementById("duvEmail").value.trim();
+  const especialidade = document.getElementById("duvEsp").value.trim();
+  const duvida = document.getElementById("duvTexto").value.trim();
+  const r = await fetch("/api/duvidas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome, email, especialidade, duvida }) });
   const j = await r.json();
-  document.getElementById("resultadoPergunta").textContent = j.ok ? "Pergunta enviada. O mestre responde aqui mesmo, nesta página." : (j.erro || "Não consegui enviar.");
-  document.getElementById("pergTexto").value = "";
-  carregarPerguntas();
+  document.getElementById("resultadoDuvida").textContent = j.ok ? j.mensagem : (j.erro || "Não consegui enviar.");
+  document.getElementById("duvTexto").value = "";
+  carregarDuvidas();
 });
+
+// ---- Cadastro, entrar e professor ----
+document.getElementById("formCadastro").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const corpo = { nome: document.getElementById("cadNome").value.trim(), email: document.getElementById("cadEmail").value.trim(), crm: document.getElementById("cadCrm").value.trim(), uf: document.getElementById("cadUf").value.trim(), especialidade: document.getElementById("cadEsp").value.trim(), telefone: document.getElementById("cadTel").value.trim(), senha: document.getElementById("cadSenha").value };
+  const r = await fetch("/api/cadastro", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  const j = await r.json();
+  document.getElementById("resultadoCadastro").textContent = j.ok ? j.mensagem : (j.erro || "Não consegui criar o cadastro.");
+});
+document.getElementById("btnVerificarEmail").onclick = async () => {
+  const token = document.getElementById("tokenVerificar").value.trim();
+  const r = await fetch("/api/verificar-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+  const j = await r.json();
+  document.getElementById("resultadoVerificar").textContent = j.ok ? j.mensagem : (j.erro || "Não consegui confirmar.");
+};
+async function atualizarInfoUsuario() {
+  try {
+    const r = await fetch("/api/usuario/eu"); const j = await r.json();
+    document.getElementById("infoUsuario").textContent = j.logado ? `Logado como ${j.usuario.nome} (${j.usuario.email}) — CRM ${j.usuario.crm}/${j.usuario.uf} — status: ${j.usuario.status}, e-mail verificado: ${j.usuario.emailVerificado ? "sim" : "não"}.` : "Nenhuma conta logada.";
+  } catch {}
+}
+document.getElementById("formLogin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const senha = document.getElementById("loginSenha").value;
+  const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, senha }) });
+  const j = await r.json();
+  document.getElementById("resultadoLogin").textContent = j.ok ? `Bem-vindo, ${j.usuario.nome}. Sua conta está aprovada — agora libere sua entrada na sala.` : (j.erro || "Não consegui entrar.");
+  atualizarInfoUsuario();
+});
+document.getElementById("btnLogout").onclick = async () => { await fetch("/api/logout", { method: "POST" }); document.getElementById("resultadoLogin").textContent = "Você saiu da sua conta."; atualizarInfoUsuario(); };
+async function atualizarPainelProf() {
+  try {
+    const r = await fetch("/api/professor/eu"); const j = await r.json();
+    const auth = document.getElementById("authProf2");
+    if (!j.temConta) {
+      auth.innerHTML = "<p>Ainda não há conta de professor. Crie a primeira, uma única vez.</p><div class='linha'><input id='profEmail' placeholder='E-mail do professor'><input id='profSenha' type='password' placeholder='Senha (mínimo 8 caracteres)'></div><button class='btn' id='btnCriarProf' type='button'>Criar conta do professor</button><p id='resProf'></p>";
+      document.getElementById("btnCriarProf").onclick = async () => {
+        const rr = await fetch("/api/professor/cadastro", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: document.getElementById("profEmail").value.trim(), senha: document.getElementById("profSenha").value }) });
+        const jj = await rr.json(); document.getElementById("resProf").textContent = jj.ok ? jj.mensagem : (jj.erro || "Não consegui criar.");
+        atualizarPainelProf();
+      };
+      document.getElementById("painelProf").style.display = "none"; return;
+    }
+    if (!j.logado) {
+      auth.innerHTML = "<div class='linha'><input id='profEmail' placeholder='E-mail do professor'><input id='profSenha' type='password' placeholder='Senha'></div><button class='btn' id='btnLoginProf' type='button'>Entrar como professor</button><p id='resProf'></p>";
+      document.getElementById("btnLoginProf").onclick = async () => {
+        const rr = await fetch("/api/professor/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: document.getElementById("profEmail").value.trim(), senha: document.getElementById("profSenha").value }) });
+        const jj = await rr.json(); document.getElementById("resProf").textContent = jj.ok ? "Professor logado." : (jj.erro || "Não consegui entrar.");
+        atualizarPainelProf();
+      };
+      document.getElementById("painelProf").style.display = "none"; return;
+    }
+    auth.textContent = `Professor logado: ${j.email}.`;
+    document.getElementById("painelProf").style.display = "block";
+    const rc = await fetch("/api/professor/cadastros"); const jc = await rc.json();
+    const lc = document.getElementById("listaCadastrosProf"); lc.innerHTML = "";
+    (jc.usuarios || []).forEach((u) => {
+      const d = document.createElement("div"); d.className = "card";
+      const p = document.createElement("p"); p.textContent = `${u.nome} — ${u.email} — CRM ${u.crm}/${u.uf} — ${u.especialidade} — status: ${u.status}, e-mail verificado: ${u.emailVerificado ? "sim" : "não"}`;
+      d.appendChild(p);
+      [["aprovar", "Aprovar"], ["validar-email", "Validar e-mail"], ["rejeitar", "Rejeitar"]].forEach(([acao, rotulo]) => {
+        const b = document.createElement("button"); b.className = "btn sec"; b.type = "button"; b.textContent = rotulo;
+        b.onclick = async () => { await fetch(`/api/professor/cadastros/${u.id}/${acao}`, { method: "POST" }); atualizarPainelProf(); };
+        d.appendChild(b);
+      });
+      lc.appendChild(d);
+    });
+    const rd = await fetch("/api/professor/duvidas"); const jd = await rd.json();
+    const ld = document.getElementById("listaDuvidasProf"); ld.innerHTML = "";
+    (jd.duvidas || []).forEach((d) => {
+      const card = document.createElement("div"); card.className = "card";
+      const q = document.createElement("p"); q.textContent = `${d.nome} (${d.email || "sem e-mail"}) perguntou: ${d.duvida} (${d.publicada ? "publicada" : "aguardando resposta"}) — notificação para o professor: ${d.notificacaoProfessor?.enviada ? "enviada" : "pendente"}, resposta enviada ao usuário por e-mail: ${d.respostaEnviadaParaUsuario ? "sim" : "não"}`;
+      card.appendChild(q);
+      if (d.email) {
+        const mail = document.createElement("a"); mail.href = `mailto:${d.email}?subject=${encodeURIComponent("Resposta à sua dúvida — Inteligência Médica")}&body=${encodeURIComponent("Olá " + d.nome + ",\n\nSobre sua dúvida:\n" + d.duvida + "\n\nResposta:\n" + (d.resposta || "") )}`;
+        mail.textContent = "Responder diretamente por e-mail"; mail.className = "btn sec"; card.appendChild(mail);
+      }
+      if (d.rascunhoIA) { const pre = document.createElement("p"); pre.textContent = "Rascunho da IA: " + d.rascunhoIA; card.appendChild(pre); }
+      card.innerHTML += `<textarea rows="3" placeholder="Resposta do professor..." id="respDuv-${d.id}"></textarea><textarea rows="3" placeholder="Fontes científicas, uma por linha (obrigatório)" id="fontDuv-${d.id}"></textarea><textarea rows="2" placeholder="Cruzamento de dados: o que foi comparado, onde diverge, o que falta (obrigatório)" id="cruzDuv-${d.id}"></textarea><select id="confDuv-${d.id}"><option value="">Confiança...</option><option>alta</option><option>média</option><option>baixa</option></select><button class="btn sec" type="button" id="iaDuv-${d.id}">Gerar rascunho com IA (só Gemini)</button> <button class="btn" type="button" id="pubDuv-${d.id}">Publicar resposta</button><p id="resDuv-${d.id}"></p>`;
+      const btnIA = card.querySelector(`#iaDuv-${d.id}`);
+      btnIA.onclick = async () => {
+        const rr = await fetch(`/api/professor/duvidas/${d.id}/rascunho-ia`, { method: "POST" }); const jj = await rr.json();
+        card.querySelector(`#resDuv-${d.id}`).textContent = jj.ok ? "Rascunho gerado — revise antes de publicar." : (jj.mensagem || jj.erro || "Não consegui gerar.");
+        if (jj.rascunho) card.querySelector(`#respDuv-${d.id}`).value = jj.rascunho;
+      };
+      card.querySelector(`#pubDuv-${d.id}`).onclick = async () => {
+        const rr = await fetch(`/api/professor/duvidas/${d.id}/responder`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resposta: card.querySelector(`#respDuv-${d.id}`).value, fontes: card.querySelector(`#fontDuv-${d.id}`).value, cruzamento: card.querySelector(`#cruzDuv-${d.id}`).value, confianca: card.querySelector(`#confDuv-${d.id}`).value }) });
+        const jj = await rr.json(); card.querySelector(`#resDuv-${d.id}`).textContent = jj.ok ? "Dúvida publicada com fonte e cruzamento." : (jj.erro || "Não consegui publicar.");
+        if (jj.ok) atualizarPainelProf();
+      };
+      ld.appendChild(card);
+    });
+  } catch {}
+}
+document.getElementById("btnLogoutProf").onclick = async () => { await fetch("/api/professor/logout", { method: "POST" }); atualizarPainelProf(); };
 
 // ---- Início ----
 (async () => {
@@ -355,6 +450,6 @@ document.getElementById("formPergunta").addEventListener("submit", async (e) => 
   renderFundos();
   try { const r = await fetch("/api/aulas"); const j = await r.json(); AULAS = j.aulas || []; } catch {}
   renderAulas();
-  carregarPerguntas();
+  carregarDuvidas();
   mostrar();
 })();

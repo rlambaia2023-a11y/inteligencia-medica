@@ -6,13 +6,15 @@ Você médico, saia do chat gpt e venha aprender o que importa.
 
 Sistema próprio, código próprio, sem dependências (Node 22). Uma sala única de aula ao vivo com áudio, vídeo, tela compartilhada e bate-papo por link, trilha de 12 aulas do básico ao avançado e perguntas do médico para o mestre.
 
-## O que tem na v1
+## O que tem na v2
 
 - Início com o slogan e o link da sala para copiar e enviar ao aluno.
 - Aulas: 12 aulas em 3 níveis (Básico, Intermediário, Avançado), com objetivo, tópicos, exemplo, exercício, narração em áudio pelo navegador e progresso salvo no navegador.
-- Sala de Aula: uma sala só (`/#sala`), fechada por login e senha compartilhados. Aluno entra primeiro com o login e a senha informados pelo professor, depois com nome, câmera e microfone ou só no bate-papo. Vídeo de pessoa para pessoa (WebRTC, sinalização própria via WebSocket), compartilhar tela, levantar a mão e bate-papo salvo. O login e a senha ficam só nas variáveis de ambiente `SALA_LOGIN` e `SALA_SENHA` do serviço — nunca no código nem no repositório público. Sem essas variáveis, a sala fica fechada.
+- Sala de Aula: uma sala só (`/#sala`). Só entra quem tem conta aprovada pelo professor (ver Cadastro). Aluno entra com nome, câmera e microfone ou só no bate-papo. Vídeo de pessoa para pessoa (WebRTC, sinalização própria via WebSocket), compartilhar tela, levantar a mão e bate-papo salvo. O código compartilhado anterior (SALA_LOGIN/SALA_SENHA) foi desativado na v2, porque contornaria a aprovação do professor.
 - Fundos da sala: 6 fundos limpos e brancos, todos com medicina e tecnologia juntos (Branco Clínico, Coração Digital, DNA e Tecnologia, Consultório Futuro, IA que Cuida, Céu Médico). O professor escolhe o fundo e ele fica atrás do vídeo na tela da aula.
-- Pergunte ao Mestre: o médico pergunta e o mestre responde na mesma página.
+- Pergunte ao Mestre — Tire suas dúvidas: o médico preenche tudo, incluindo o e-mail, e envia a dúvida. A dúvida só aparece publicada depois que o professor responder com resposta, pelo menos uma fonte científica, cruzamento de dados e confiança. Sem esses campos, a API recusa a publicação. O professor pode gerar um rascunho só com Gemini Lite (cache, parada em 429, sem chave nenhum rascunho é inventado) e precisa revisar e aprovar antes de publicar. Todas as dúvidas são notificadas para MH.cuidarsaude@gmail.com e a resposta publicada é enviada diretamente para o e-mail informado no formulário — envio automático só com EMAIL_WEBHOOK_URL configurado; sem ele, o sistema registra como pendente e o professor responde direto pelo e-mail do usuário (botão na área do professor), sem fingir envio. O e-mail do usuário nunca aparece na lista pública, só na área do professor.
+- Cadastro e aprovação: página de Cadastro com nome completo, e-mail, CRM, UF, especialidade, telefone e senha (scrypt, mínimo 8 caracteres). A conta nasce pendente: precisa confirmar o e-mail (link com token) e ser aprovada pelo professor. Sem e-mail confirmado e sem aprovação, o login é recusado e a sala não abre. Envio de e-mail: sem provedor configurado (EMAIL_WEBHOOK_URL), o sistema avisa honestamente e o professor valida o e-mail na área de aprovação — nenhum envio é fingido.
+- Área do Professor: primeira conta criada uma única vez na página, depois só login (sessão 12h). Lá o professor aprova, rejeita e valida e-mails de cadastros, e responde e publica dúvidas.
 
 ## Rodar
 

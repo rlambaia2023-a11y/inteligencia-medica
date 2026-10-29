@@ -13,7 +13,10 @@
     <button data-nav="inicio" class="ativo">Início</button>
     <button data-nav="aulas">Aulas</button>
     <button data-nav="sala">Sala de Aula</button>
-    <button data-nav="perguntas">Pergunte ao Mestre</button>
+    <button data-nav="duvidas">Pergunte ao Mestre</button>
+    <button data-nav="cadastro">Cadastro</button>
+    <button data-nav="entrar">Entrar</button>
+    <button data-nav="professor">Professor</button>
   </nav>
 </header>
 
@@ -70,14 +73,14 @@
     <h2>Sala de Aula — ao vivo</h2>
     <p class="muted">Uma sala só. Envie o link para o aluno: ele entra com login e senha, digita o nome e participa. Áudio, vídeo, tela compartilhada e bate-papo na mesma página.</p>
     <div id="salaLogin">
-      <h3>Acesso à sala</h3>
-      <p class="muted">Para entrar na sala, o aluno precisa do login e da senha informados pelo professor.</p>
+      <h3>Acesso à sala — conta aprovada</h3>
+      <p class="muted">A sala só abre para quem fez cadastro, confirmou o e-mail e foi aprovado pelo professor. Sem aprovação, não há entrada — o código compartilhado anterior não vale mais.</p>
       <div class="linha">
-        <input id="loginSala" placeholder="Login da sala" autocomplete="username">
-        <input id="senhaSala" type="password" placeholder="Senha da sala" autocomplete="current-password">
+        <button class="btn" onclick="irPara('cadastro')">Fazer meu cadastro</button>
+        <button class="btn sec" onclick="irPara('entrar')">Já tenho conta — Entrar</button>
+        <button class="btn sec" id="btnLiberarSala" type="button">Liberar minha entrada na sala</button>
       </div>
-      <button class="btn" id="btnLoginSala" type="button">Entrar com login e senha</button>
-      <p id="statusLoginSala" class="muted"></p>
+      <p id="statusLiberarSala" class="muted"></p>
     </div>
     <div class="linha">
       <button class="btn" id="btnCopiarLinkSala">Copiar link desta sala</button>
@@ -128,17 +131,73 @@
   </div>
 </section>
 
-<section id="secao-perguntas" class="secao">
-  <h2>Pergunte ao Mestre</h2>
-  <p class="muted">O médico pergunta, o mestre responde. Pergunta real, resposta de quem ensina — sem resposta genérica de chat.</p>
-  <form id="formPergunta">
-    <input id="pergNome" placeholder="Seu nome">
-    <textarea id="pergTexto" rows="3" placeholder="Sua pergunta para o mestre..." required></textarea>
-    <button class="btn" type="submit">Enviar pergunta</button>
+<section id="secao-duvidas" class="secao">
+  <h2>Pergunte ao Mestre — Tire suas dúvidas</h2>
+  <p class="muted">Pergunta de médico, resposta com embasamento científico e cruzamento de dados. Nenhuma dúvida aparece publicada sem resposta, sem fonte científica, sem cruzamento e sem aprovação do professor.</p>
+  <p class="muted">Preencha tudo, incluindo seu e-mail: a resposta será enviada diretamente para ele, depois de aprovada pelo professor. Todas as dúvidas também são enviadas para MH.cuidarsaude@gmail.com. Seu e-mail não aparece na lista pública de dúvidas, só na área do professor.</p>
+  <p class="aviso"><strong>Regra desta página:</strong> a resposta apoia o raciocínio e não substitui o julgamento do médico. Caso de paciente específico deve ser anonimizado: sem nome, documento, foto identificável ou dado raro.</p>
+  <form id="formDuvida">
+    <input id="duvNome" placeholder="Seu nome" required>
+    <input id="duvEmail" type="email" placeholder="Seu e-mail (para receber a resposta diretamente)" required>
+    <input id="duvEsp" placeholder="Sua especialidade (opcional)">
+    <textarea id="duvTexto" rows="3" placeholder="Sua dúvida (anonimizada, sem dado de paciente identificável)..." required></textarea>
+    <button class="btn" type="submit">Enviar dúvida</button>
   </form>
-  <p id="resultadoPergunta"></p>
-  <h3>Perguntas e respostas</h3>
-  <div id="listaPerguntas"></div>
+  <p id="resultadoDuvida"></p>
+  <h3>Dúvidas respondidas e publicadas</h3>
+  <div id="listaDuvidas"></div>
+</section>
+
+<section id="secao-cadastro" class="secao">
+  <h2>Cadastro — para médicos</h2>
+  <p class="muted">Faça todo o seu cadastro aqui. Depois, confirme seu e-mail e aguarde: o professor precisa autorizar e validar seu acesso antes de você entrar na sala. Sem aprovação, não há entrada.</p>
+  <form id="formCadastro">
+    <input id="cadNome" placeholder="Nome completo" required>
+    <input id="cadEmail" type="email" placeholder="E-mail" required>
+    <div class="linha">
+      <input id="cadCrm" placeholder="CRM (só o número)" required>
+      <input id="cadUf" placeholder="UF do CRM (ex.: BA)" required>
+    </div>
+    <input id="cadEsp" placeholder="Especialidade" required>
+    <input id="cadTel" placeholder="Telefone / WhatsApp (opcional)">
+    <input id="cadSenha" type="password" placeholder="Senha (mínimo 8 caracteres)" required>
+    <button class="btn" type="submit">Criar meu cadastro</button>
+  </form>
+  <p id="resultadoCadastro"></p>
+  <h3>Confirmar e-mail</h3>
+  <p class="muted">Se você recebeu um link de confirmação, cole o código dele aqui. Se o envio de e-mail ainda não estiver configurado no servidor, o professor valida seu e-mail na aprovação — a página de cadastro avisa isso na hora.</p>
+  <div class="linha">
+    <input id="tokenVerificar" placeholder="Código do link de confirmação">
+    <button class="btn sec" id="btnVerificarEmail" type="button">Confirmar e-mail</button>
+  </div>
+  <p id="resultadoVerificar"></p>
+</section>
+
+<section id="secao-entrar" class="secao">
+  <h2>Entrar</h2>
+  <p class="muted">Entre com o e-mail e a senha do seu cadastro aprovado. Conta pendente de e-mail ou de aprovação do professor não entra.</p>
+  <div id="infoUsuario"></div>
+  <form id="formLogin">
+    <input id="loginEmail" type="email" placeholder="E-mail do cadastro" required>
+    <input id="loginSenha" type="password" placeholder="Senha" required>
+    <button class="btn" type="submit">Entrar</button>
+  </form>
+  <p id="resultadoLogin"></p>
+  <button class="btn sec" id="btnLogout" type="button">Sair da minha conta</button>
+</section>
+
+<section id="secao-professor" class="secao">
+  <h2>Área do Professor — autorizar e validar</h2>
+  <p class="muted">Só o professor aprova cadastros, valida e-mails e publica respostas de dúvidas. A primeira conta de professor é criada aqui, uma única vez; depois, só o login funciona.</p>
+  <div id="authProf2"></div>
+  <div id="painelProf" style="display:none">
+    <h3>Cadastros para aprovar</h3>
+    <div id="listaCadastrosProf"></div>
+    <h3>Dúvidas para responder e publicar</h3>
+    <p class="muted">Para publicar, preencha resposta, pelo menos uma fonte científica (uma por linha), cruzamento de dados e confiança. O botão de rascunho usa só Gemini, com parada em cota, e nunca publica sozinho: o professor revisa e aprova.</p>
+    <div id="listaDuvidasProf"></div>
+    <button class="btn sec" id="btnLogoutProf" type="button">Sair da área do professor</button>
+  </div>
 </section>
 </main>
 
