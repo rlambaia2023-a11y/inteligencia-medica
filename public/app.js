@@ -110,6 +110,23 @@ document.querySelectorAll("[data-filtro]").forEach((b) => b.onclick = () => { fi
 
 // ---- Sala ao vivo ----
 let ws = null, meuPeerId = null, localStream = null, cameraTrackOriginal = null;
+let salaToken = sessionStorage.getItem("im-sala-token") || "";
+function atualizarBloqueio() { document.body.classList.toggle("sala-bloqueada", !salaToken); }
+async function loginSala() {
+  const login = document.getElementById("loginSala").value.trim();
+  const senha = document.getElementById("senhaSala").value;
+  const st = document.getElementById("statusLoginSala");
+  st.textContent = "Verificando acesso...";
+  try {
+    const r = await fetch("/api/sala/entrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, senha }) });
+    const j = await r.json();
+    if (!j.ok || !j.token) { st.textContent = j.erro || "Login ou senha incorretos."; st.className = "erro"; return; }
+    salaToken = j.token; sessionStorage.setItem("im-sala-token", salaToken);
+    atualizarBloqueio();
+    st.textContent = "Acesso liberado. Agora digite seu nome e entre na sala.";
+    st.className = "ok";
+  } catch { st.textContent = "Não consegui verificar o acesso. Tente de novo."; st.className = "erro"; }
+}
 let pcs = new Map(), salaAtiva = false, micLigado = true, camLigada = true, compartilhando = false, telaStream = null;
 let chatVistos = new Set(), pollTimer = null;
 const gridVideos = () => document.querySelector("#palcoSala .video-grid");
@@ -172,9 +189,10 @@ function conectarWS(nome, papel) {
   if (ws && ws.readyState === 1) { wsEnviar({ type: "join", nome, papel }); return; }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(proto + "//" + location.host + "/ws");
-  ws.onopen = () => wsEnviar({ type: "join", nome, papel });
+  ws.onopen = () => wsEnviar({ type: "join", nome, papel, token: salaToken });
   ws.onmessage = (ev) => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "erro") { salaToken = ""; sessionStorage.removeItem("im-sala-token"); atualizarBloqueio(); setStatus(msg.mensagem || "Acesso negado."); return; }
     if (msg.type === "welcome") {
       meuPeerId = msg.peerId;
       (msg.historico || []).forEach(addChat);
@@ -197,13 +215,14 @@ function iniciarPoll() {
   pollTimer = setInterval(async () => {
     if (!salaAtiva) return;
     try {
-      const r = await fetch("/api/sala"); const j = await r.json();
+      const r = await fetch("/api/sala?token=" + encodeURIComponent(salaToken)); const j = await r.json();
       (j.mensagens || []).forEach(addChat);
       if (j.sala) atualizarOnline(j.sala.online);
     } catch {}
   }, 4000);
 }
 async function entrarSala(comVideo) {
+  if (!salaToken) { alert("Entre primeiro com o login e a senha da sala."); atualizarBloqueio(); return; }
   const nome = document.getElementById("nomeSala").value.trim() || "Aluno";
   const papel = document.getElementById("papelSala").value;
   salaAtiva = true;
@@ -224,6 +243,8 @@ async function entrarSala(comVideo) {
   conectarWS(nome, papel);
   iniciarPoll();
 }
+document.getElementById("btnLoginSala").onclick = loginSala;
+document.getElementById("senhaSala").addEventListener("keydown", (e) => { if (e.key === "Enter") loginSala(); });
 document.getElementById("btnEntrarVideo").onclick = () => entrarSala(true);
 document.getElementById("btnEntrarChat").onclick = () => entrarSala(false);
 document.getElementById("btnSairSala").onclick = () => {
@@ -272,7 +293,7 @@ async function enviarChat() {
   const nome = document.getElementById("nomeSala").value.trim() || "Aluno";
   document.getElementById("chatTexto").value = "";
   if (ws && ws.readyState === 1) { wsEnviar({ type: "chat", texto }); return; }
-  try { const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome, texto }) }); const j = await r.json(); if (j.mensagem) addChat(j.mensagem); } catch {}
+  try { const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome, texto, token: salaToken }) }); const j = await r.json(); if (j.mensagem) addChat(j.mensagem); } catch {}
 }
 document.getElementById("btnEnviarChat").onclick = enviarChat;
 document.getElementById("chatTexto").addEventListener("keydown", (e) => { if (e.key === "Enter") enviarChat(); });
@@ -327,6 +348,7 @@ document.getElementById("formPergunta").addEventListener("submit", async (e) => 
 
 // ---- Início ----
 (async () => {
+  atualizarBloqueio();
   renderFundos();
   try { const r = await fetch("/api/aulas"); const j = await r.json(); AULAS = j.aulas || []; } catch {}
   renderAulas();

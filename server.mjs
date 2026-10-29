@@ -100,6 +100,13 @@ function carregar() {
 }
 let db = carregar();
 function salvar() { try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch {} }
+// Acesso à sala: login e senha compartilhados, lidos SÓ das variáveis de
+// ambiente SALA_LOGIN e SALA_SENHA. Nada disso fica no código nem no repo
+// público. Sem as variáveis, a sala fica fechada (falha fechada).
+// Cada login válido gera um token de sessão em memória, usado na entrada
+// por WebSocket e no bate-papo por REST. Reiniciar o servidor invalida
+// os tokens, o que é seguro.
+const salaTokens = new Set();
 function lerCorpo(req) {
   return new Promise((resolve) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { resolve(b ? JSON.parse(b) : {}); } catch { resolve({}); } }); });
 }
@@ -141,6 +148,7 @@ function wsProcessar(socket, estado, chunk) {
     if (opcode !== 1) continue;
     let msg; try { msg = JSON.parse(payload.toString("utf8")); } catch { continue; }
     if (msg.type === "join" && !estado.peerId) {
+      if (!salaTokens.has(msg.token)) { wsEnviar(socket, { type: "erro", mensagem: "Entre na sala com login e senha antes de entrar no vídeo e no bate-papo." }); setTimeout(() => { try { socket.destroy(); } catch {} }, 100); return; }
       const peerId = crypto.randomUUID();
       estado.peerId = peerId; estado.sala = SALA; estado.nome = limpo(msg.nome, 80) || "Aluno";
       const existentes = [...peers.values()].filter((p) => p.sala === SALA).map((p) => ({ peerId: p.peerId, nome: p.nome, papel: p.papel }));
@@ -167,7 +175,17 @@ const server = http.createServer(async (req, res) => {
   const rota = url.pathname;
   if (rota === "/api/health") return enviar(res, 200, { ok: true, servico: "inteligencia-medica", versao: "v1", aulas: AULAS.length, perguntas: db.perguntas.length, mensagens: db.mensagens.length, onlineNaSala: [...peers.values()].filter((p) => p.sala === SALA).length });
   if (rota === "/api/aulas") return enviar(res, 200, { ok: true, aulas: AULAS });
-  if (rota === "/api/sala") return enviar(res, 200, { ok: true, sala: { codigo: SALA, titulo: "Sala de Aula — Inteligência Médica", online: [...peers.values()].filter((p) => p.sala === SALA).map((p) => p.nome), link: "/#sala" }, mensagens: db.mensagens.slice(-50) });
+  if (rota === "/api/sala") return enviar(res, 200, { ok: true, sala: { codigo: SALA, titulo: "Sala de Aula — Inteligência Médica", acessoProtegido: true, online: [...peers.values()].filter((p) => p.sala === SALA).map((p) => p.nome), link: "/#sala" }, mensagens: salaTokens.has(url.searchParams.get("token")) ? db.mensagens.slice(-50) : [] });
+  if (req.method === "POST" && rota === "/api/sala/entrar") {
+    const b = await lerCorpo(req);
+    const loginEsperado = process.env.SALA_LOGIN || "";
+    const senhaEsperada = process.env.SALA_SENHA || "";
+    if (!loginEsperado || !senhaEsperada) return enviar(res, 503, { ok: false, erro: "Sala ainda não configurada pelo professor. Tente de novo mais tarde." });
+    if (limpo(b.login, 80) !== loginEsperado || limpo(b.senha, 200) !== senhaEsperada) return enviar(res, 401, { ok: false, erro: "Login ou senha incorretos." });
+    const token = crypto.randomUUID();
+    salaTokens.add(token);
+    return enviar(res, 200, { ok: true, token });
+  }
   if (req.method === "GET" && rota === "/api/perguntas") return enviar(res, 200, { ok: true, perguntas: [...db.perguntas].reverse() });
   if (req.method === "POST" && rota === "/api/perguntas") {
     const b = await lerCorpo(req);
@@ -186,6 +204,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && rota === "/api/chat") {
     const b = await lerCorpo(req);
+    if (!salaTokens.has(b.token)) return enviar(res, 401, { ok: false, erro: "Entre na sala com login e senha antes de escrever no bate-papo." });
     const texto = limpo(b.texto, 500); if (!texto) return enviar(res, 400, { ok: false, erro: "Escreva a mensagem." });
     const m = { id: db.contador++, nome: limpo(b.nome, 80) || "Aluno", texto, em: new Date().toISOString() };
     db.mensagens.push(m); if (db.mensagens.length > 200) db.mensagens = db.mensagens.slice(-200); salvar();

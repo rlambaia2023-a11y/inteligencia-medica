@@ -28,3 +28,7 @@ footer{max-width:1080px;margin:0 auto;padding:22px 16px 36px;color:#94a3b8;borde
 .fundo-picker button.ativo{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
 .sala-clara .chat{background:#fff;border-color:#e2e8f0}.sala-clara .msg{background:#f1f5f9;color:#0f172a}.sala-clara .msg b{color:#1d4ed8}.sala-clara .msg small{color:#64748b}
 .sala-clara .video-box{border-color:#e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.10)}
+
+/* Sala fechada: sem login, só o cartão de acesso aparece */
+body.sala-bloqueada #secao-sala .sala-clara > *:not(#salaLogin) { display: none; }
+#salaLogin { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px; }

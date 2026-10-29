@@ -68,7 +68,17 @@
 <section id="secao-sala" class="secao">
   <div class="sala-clara">
     <h2>Sala de Aula — ao vivo</h2>
-    <p class="muted">Uma sala só. Envie o link para o aluno: ele digita o nome e entra. Áudio, vídeo, tela compartilhada e bate-papo na mesma página.</p>
+    <p class="muted">Uma sala só. Envie o link para o aluno: ele entra com login e senha, digita o nome e participa. Áudio, vídeo, tela compartilhada e bate-papo na mesma página.</p>
+    <div id="salaLogin">
+      <h3>Acesso à sala</h3>
+      <p class="muted">Para entrar na sala, o aluno precisa do login e da senha informados pelo professor.</p>
+      <div class="linha">
+        <input id="loginSala" placeholder="Login da sala" autocomplete="username">
+        <input id="senhaSala" type="password" placeholder="Senha da sala" autocomplete="current-password">
+      </div>
+      <button class="btn" id="btnLoginSala" type="button">Entrar com login e senha</button>
+      <p id="statusLoginSala" class="muted"></p>
+    </div>
     <div class="linha">
       <button class="btn" id="btnCopiarLinkSala">Copiar link desta sala</button>
       <button class="btn sec" id="btnAbrirSala">Abrir sala em nova aba</button>
