@@ -46,7 +46,7 @@ window.irPara = irPara;
 function mostrar() {
   const hash = (location.hash || "#inicio").replace("#", "");
   let secao = "inicio";
-  if (hash === "aulas" || hash === "sala" || hash === "perguntas") secao = hash;
+  if (hash === "aulas" || hash === "sala" || hash === "perguntas" || hash === "perguntar" || hash === "pergunta") secao = hash === "aulas" || hash === "sala" ? hash : "perguntas";
   else if (hash.startsWith("aula-")) { secao = "aula"; mostrarAula(Number(hash.replace("aula-", ""))); }
   document.querySelectorAll(".secao").forEach((s) => s.classList.remove("ativa"));
   const alvo = document.getElementById("secao-" + secao);
@@ -55,6 +55,9 @@ function mostrar() {
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", mostrar);
+// Botões do menu: sem este clique, o botão só mudava o destaque e a seção
+// não trocava — foi o defeito encontrado no teste ao vivo.
+document.querySelectorAll("nav.top button").forEach((b) => { b.onclick = () => irPara(b.dataset.nav); });
 
 // ---- Aulas ----
 function concluidas() { try { return JSON.parse(localStorage.getItem("im-concluidas") || "[]"); } catch { return []; } }
