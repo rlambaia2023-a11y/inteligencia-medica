@@ -358,7 +358,13 @@ function cardBanco(q) {
 }
 async function carregarBanco() {
   try {
-    if (!ASSUNTOS_CACHE.length) { const r0 = await fetch("/api/assuntos"); const j0 = await r0.json(); ASSUNTOS_CACHE = j0.assuntos || []; const sel = document.getElementById("filtroBancoAssunto"); sel.innerHTML = '<option value="">Todos os assuntos</option>' + ASSUNTOS_CACHE.map((a) => `<option value="${a.id}">${a.nome}</option>`).join(""); }
+    if (!ASSUNTOS_CACHE.length) { const r0 = await fetch("/api/assuntos"); const j0 = await r0.json(); ASSUNTOS_CACHE = j0.assuntos || []; }
+    // O select de assunto do banco precisa ser preenchido sempre, não só
+    // na primeira visita: quem já passou por Assuntos tinha o cache cheio
+    // e o select ficava só com "Todos os assuntos" — defeito achado no
+    // teste ao vivo da v3.
+    const selBanco = document.getElementById("filtroBancoAssunto");
+    selBanco.innerHTML = '<option value="">Todos os assuntos</option>' + ASSUNTOS_CACHE.map((a) => `<option value="${a.id}">${a.nome}</option>`).join("");
     const params = new URLSearchParams({ q: document.getElementById("buscaBanco").value || "", assunto: document.getElementById("filtroBancoAssunto").value || "", nivel: document.getElementById("filtroBancoNivel").value || "Todos" });
     const r = await fetch("/api/banco-perguntas?" + params.toString()); const j = await r.json();
     document.getElementById("contadorBanco").textContent = `${j.total} perguntas e respostas encontradas.`;
