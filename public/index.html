@@ -12,6 +12,8 @@
   <nav class="top" aria-label="Navegação">
     <button data-nav="inicio" class="ativo">Início</button>
     <button data-nav="aulas">Aulas</button>
+    <button data-nav="assuntos">Assuntos</button>
+    <button data-nav="banco">Perguntas e Respostas</button>
     <button data-nav="sala">Sala de Aula</button>
     <button data-nav="duvidas">Pergunte ao Mestre</button>
     <button data-nav="cadastro">Cadastro</button>
@@ -30,6 +32,8 @@
     <div class="linha">
       <button class="btn" onclick="irPara('sala')">Entrar na Sala de Aula</button>
       <button class="btn sec" onclick="irPara('aulas')">Ver as aulas</button>
+      <button class="btn sec" onclick="irPara('assuntos')">Ver os assuntos</button>
+      <button class="btn sec" onclick="irPara('banco')">Perguntas e Respostas</button>
       <button class="btn sec" id="btnCopiarLink">Copiar link da sala</button>
     </div>
     <p id="linkSalaTexto" class="muted"></p>
@@ -61,6 +65,29 @@
     <button class="btn sec" data-filtro="Avançado">Avançado</button>
   </div>
   <div id="listaAulas" class="cards"></div>
+</section>
+
+<section id="secao-assuntos" class="secao">
+  <h2>Assuntos — a base de dados da Inteligência Médica</h2>
+  <p class="muted">12 assuntos, do básico ao avançado. Cada assunto tem tópicos, aulas relacionadas e as perguntas e respostas do banco. Clique num assunto para abrir o detalhe.</p>
+  <div class="linha">
+    <input id="buscaAssunto" placeholder="Buscar assunto ou tópico...">
+    <select id="filtroAssuntoNivel" aria-label="Filtrar assuntos por nível"><option value="Todos">Todos os níveis</option><option>Básico</option><option>Intermediário</option><option>Avançado</option></select>
+  </div>
+  <div id="listaAssuntos" class="cards"></div>
+  <div id="detalheAssunto"></div>
+</section>
+
+<section id="secao-banco" class="secao">
+  <h2>Perguntas e Respostas — o banco</h2>
+  <p class="muted">Pergunta e resposta com fonte, cruzamento de dados e confiança — a mesma régua das dúvidas publicadas. Busque por palavra, assunto ou nível. Toda dúvida publicada pelo professor entra aqui automaticamente, e o professor pode cadastrar novas perguntas na área dele.</p>
+  <div class="linha">
+    <input id="buscaBanco" placeholder="Buscar no banco (ex.: LGPD, exame, laudo)...">
+    <select id="filtroBancoAssunto" aria-label="Filtrar banco por assunto"><option value="">Todos os assuntos</option></select>
+    <select id="filtroBancoNivel" aria-label="Filtrar banco por nível"><option value="Todos">Todos os níveis</option><option>Básico</option><option>Intermediário</option><option>Avançado</option></select>
+  </div>
+  <p id="contadorBanco" class="muted"></p>
+  <div id="listaBanco"></div>
 </section>
 
 <section id="secao-aula" class="secao">
@@ -193,6 +220,24 @@
   <div id="painelProf" style="display:none">
     <h3>Cadastros para aprovar</h3>
     <div id="listaCadastrosProf"></div>
+    <h3>Cadastrar pergunta e resposta no banco</h3>
+    <p class="muted">A pergunta entra no banco na hora, com fonte, cruzamento e confiança — a mesma régua das dúvidas publicadas.</p>
+    <form id="formNovaPergunta">
+      <input id="npPergunta" placeholder="Pergunta" required>
+      <textarea id="npResposta" rows="3" placeholder="Resposta" required></textarea>
+      <div class="linha">
+        <select id="npAssunto" aria-label="Assunto da pergunta"></select>
+        <select id="npNivel" aria-label="Nível da pergunta"><option>Básico</option><option>Intermediário</option><option>Avançado</option><option>Todos</option></select>
+      </div>
+      <textarea id="npFontes" rows="2" placeholder="Fontes, uma por linha (obrigatório)" required></textarea>
+      <textarea id="npCruzamento" rows="2" placeholder="Cruzamento de dados (obrigatório)" required></textarea>
+      <div class="linha">
+        <select id="npConfianca" aria-label="Confiança"><option value="">Confiança...</option><option>alta</option><option>média</option><option>baixa</option></select>
+        <input id="npTags" placeholder="Palavras-chave, separadas por vírgula (opcional)">
+      </div>
+      <button class="btn" type="submit">Cadastrar no banco</button>
+    </form>
+    <p id="resultadoNovaPergunta"></p>
     <h3>Dúvidas para responder e publicar</h3>
     <p class="muted">Para publicar, preencha resposta, pelo menos uma fonte científica (uma por linha), cruzamento de dados e confiança. O botão de rascunho usa só Gemini, com parada em cota, e nunca publica sozinho: o professor revisa e aprova.</p>
     <div id="listaDuvidasProf"></div>

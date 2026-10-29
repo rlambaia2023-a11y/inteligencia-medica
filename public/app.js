@@ -46,9 +46,11 @@ window.irPara = irPara;
 function mostrar() {
   const hash = (location.hash || "#inicio").replace("#", "");
   let secao = "inicio";
-  if (["inicio", "aulas", "sala", "duvidas", "cadastro", "entrar", "professor"].includes(hash)) secao = hash;
+  if (["inicio", "aulas", "assuntos", "banco", "sala", "duvidas", "cadastro", "entrar", "professor"].includes(hash)) secao = hash;
   else if (hash === "perguntas" || hash === "perguntar" || hash === "pergunta") secao = "duvidas";
   else if (hash.startsWith("aula-")) { secao = "aula"; mostrarAula(Number(hash.replace("aula-", ""))); }
+  if (secao === "assuntos") carregarAssuntos();
+  if (secao === "banco") carregarBanco();
   if (secao === "duvidas") carregarDuvidas();
   if (secao === "entrar") atualizarInfoUsuario();
   if (secao === "professor") atualizarPainelProf();
@@ -316,6 +318,59 @@ document.getElementById("btnAbrirSala").onclick = () => window.open(linkSala(), 
 document.getElementById("linkSalaTexto").textContent = "Link da sala: " + linkSala();
 document.getElementById("linkSalaTexto2").textContent = "Link da sala: " + linkSala();
 
+// ---- Assuntos e Banco de Perguntas e Respostas (v3) ----
+let ASSUNTOS_CACHE = [];
+async function carregarAssuntos() {
+  try {
+    const r = await fetch("/api/assuntos"); const j = await r.json();
+    ASSUNTOS_CACHE = j.assuntos || [];
+    const termo = (document.getElementById("buscaAssunto").value || "").toLowerCase();
+    const nivel = document.getElementById("filtroAssuntoNivel").value;
+    const lista = ASSUNTOS_CACHE.filter((a) => (nivel === "Todos" || a.nivel === nivel) && (!termo || [a.nome, a.descricao, a.topicos.join(" "), a.palavrasChave.join(" ")].join(" ").toLowerCase().includes(termo)));
+    const el = document.getElementById("listaAssuntos"); el.innerHTML = "";
+    if (!lista.length) { el.innerHTML = "<p class='muted'>Nenhum assunto com esse filtro. Tente outra palavra.</p>"; return; }
+    lista.forEach((a) => {
+      const d = document.createElement("div"); d.className = "card";
+      d.innerHTML = `<span class="nivel">${a.nivel}</span><h3>${a.nome}</h3><p>${a.descricao}</p><p class="muted">${a.topicos.length} tópicos · ${a.perguntas} perguntas e respostas no banco · Aulas: ${a.aulasRelacionadas.join(", ")}</p>`;
+      d.onclick = async () => {
+        const rr = await fetch("/api/assuntos/" + a.id); const jj = await rr.json();
+        const det = document.getElementById("detalheAssunto");
+        det.innerHTML = `<h3>${jj.assunto.nome} — detalhe</h3><p>${jj.assunto.descricao}</p><h4>Tópicos</h4><ul>${jj.assunto.topicos.map((t) => `<li>${t}</li>`).join("")}</ul><h4>Aulas relacionadas</h4><ul>${jj.aulas.map((x) => `<li>${x.numero} — ${x.titulo}</li>`).join("")}</ul><h4>Perguntas e respostas deste assunto</h4>`;
+        jj.perguntas.forEach((q) => det.appendChild(cardBanco(q)));
+        det.scrollIntoView();
+      };
+      el.appendChild(d);
+    });
+  } catch {}
+}
+document.getElementById("buscaAssunto").addEventListener("input", carregarAssuntos);
+document.getElementById("filtroAssuntoNivel").addEventListener("change", carregarAssuntos);
+function cardBanco(q) {
+  const card = document.createElement("div"); card.className = "card";
+  const nomeAssunto = (ASSUNTOS_CACHE.find((a) => a.id === q.assunto) || {}).nome || q.assunto;
+  card.innerHTML = `<span class="nivel">${q.nivel} · ${nomeAssunto}</span><h3>${q.pergunta}</h3><p>${q.resposta}</p>`;
+  const f = document.createElement("div"); f.innerHTML = "<strong>Fontes:</strong><ul></ul>";
+  (q.fontes || []).forEach((fonte) => { const li = document.createElement("li"); li.textContent = fonte; f.querySelector("ul").appendChild(li); });
+  const c = document.createElement("p"); const cb = document.createElement("b"); cb.textContent = "Cruzamento de dados: "; c.append(cb, document.createTextNode(q.cruzamento || ""));
+  const meta = document.createElement("p"); meta.className = "muted"; meta.textContent = `Confiança: ${q.confianca}${q.aulaRelacionada ? " · Aula " + q.aulaRelacionada : ""}${q.tags && q.tags.length ? " · " + q.tags.join(", ") : ""}`;
+  card.append(f, c, meta);
+  return card;
+}
+async function carregarBanco() {
+  try {
+    if (!ASSUNTOS_CACHE.length) { const r0 = await fetch("/api/assuntos"); const j0 = await r0.json(); ASSUNTOS_CACHE = j0.assuntos || []; const sel = document.getElementById("filtroBancoAssunto"); sel.innerHTML = '<option value="">Todos os assuntos</option>' + ASSUNTOS_CACHE.map((a) => `<option value="${a.id}">${a.nome}</option>`).join(""); }
+    const params = new URLSearchParams({ q: document.getElementById("buscaBanco").value || "", assunto: document.getElementById("filtroBancoAssunto").value || "", nivel: document.getElementById("filtroBancoNivel").value || "Todos" });
+    const r = await fetch("/api/banco-perguntas?" + params.toString()); const j = await r.json();
+    document.getElementById("contadorBanco").textContent = `${j.total} perguntas e respostas encontradas.`;
+    const el = document.getElementById("listaBanco"); el.innerHTML = "";
+    if (!j.total) { el.innerHTML = "<p class='muted'>Nenhuma pergunta com esse filtro. Tente outra palavra ou assunto.</p>"; return; }
+    (j.perguntas || []).forEach((q) => el.appendChild(cardBanco(q)));
+  } catch {}
+}
+document.getElementById("buscaBanco").addEventListener("input", carregarBanco);
+document.getElementById("filtroBancoAssunto").addEventListener("change", carregarBanco);
+document.getElementById("filtroBancoNivel").addEventListener("change", carregarBanco);
+
 // ---- Tire suas dúvidas (publicadas, com fonte e cruzamento) ----
 async function carregarDuvidas() {
   try {
@@ -402,6 +457,7 @@ async function atualizarPainelProf() {
     }
     auth.textContent = `Professor logado: ${j.email}.`;
     document.getElementById("painelProf").style.display = "block";
+    preencherAssuntosProf();
     const rc = await fetch("/api/professor/cadastros"); const jc = await rc.json();
     const lc = document.getElementById("listaCadastrosProf"); lc.innerHTML = "";
     (jc.usuarios || []).forEach((u) => {
@@ -443,6 +499,20 @@ async function atualizarPainelProf() {
   } catch {}
 }
 document.getElementById("btnLogoutProf").onclick = async () => { await fetch("/api/professor/logout", { method: "POST" }); atualizarPainelProf(); };
+document.getElementById("formNovaPergunta").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const corpo = { pergunta: document.getElementById("npPergunta").value.trim(), resposta: document.getElementById("npResposta").value.trim(), assunto: document.getElementById("npAssunto").value, nivel: document.getElementById("npNivel").value, fontes: document.getElementById("npFontes").value, cruzamento: document.getElementById("npCruzamento").value, confianca: document.getElementById("npConfianca").value, tags: document.getElementById("npTags").value };
+  const r = await fetch("/api/professor/banco-perguntas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  const j = await r.json();
+  document.getElementById("resultadoNovaPergunta").textContent = j.ok ? "Pergunta cadastrada no banco." : (j.erro || "Não consegui cadastrar.");
+  if (j.ok) { document.getElementById("formNovaPergunta").reset(); }
+});
+async function preencherAssuntosProf() {
+  try {
+    if (!ASSUNTOS_CACHE.length) { const r = await fetch("/api/assuntos"); const j = await r.json(); ASSUNTOS_CACHE = j.assuntos || []; }
+    document.getElementById("npAssunto").innerHTML = ASSUNTOS_CACHE.map((a) => `<option value="${a.id}">${a.nome}</option>`).join("");
+  } catch {}
+}
 
 // ---- Início ----
 (async () => {

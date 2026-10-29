@@ -1,4 +1,4 @@
-// Inteligência Médica v1 — código próprio, sem dependências.
+// Inteligência Médica v3 — código próprio, sem dependências.
 // Uma sala única de aula ao vivo (áudio, vídeo e bate-papo por link),
 // trilha do básico ao avançado e perguntas do médico para o mestre.
 // Regras vigentes: pt-BR, sem inventar link, horário ou envio, e a IA
@@ -15,6 +15,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "dados.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SALA = "sala";
+import { ASSUNTOS, BANCO } from "./conteudo-v3.mjs";
 
 const AULAS = [
   { id: 1, nivel: "Básico", numero: "Aula 1", titulo: "O que é Inteligência Médica (e o que ela não é)", duracao: "Aula ao vivo + leitura",
@@ -91,11 +92,11 @@ const AULAS = [
     exercicio: "Projeto final: entregue o roteiro da sua aula. Na sala ao vivo, você apresenta e recebe perguntas dos colegas." },
 ];
 
-function seed() { return { perguntas: [], mensagens: [], contador: 1, usuarios: [], professores: [], duvidas: [] }; }
+function seed() { return { perguntas: [], mensagens: [], contador: 100, usuarios: [], professores: [], duvidas: [], bancoPerguntas: JSON.parse(JSON.stringify(BANCO)) }; }
 function carregar() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DATA_FILE)) { const d = seed(); fs.writeFileSync(DATA_FILE, JSON.stringify(d, null, 2)); return d; }
-  try { const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); if (!Array.isArray(d.perguntas)) d.perguntas = []; if (!Array.isArray(d.mensagens)) d.mensagens = []; if (!d.contador) d.contador = 1; if (!Array.isArray(d.usuarios)) d.usuarios = []; if (!Array.isArray(d.professores)) d.professores = []; if (!Array.isArray(d.duvidas)) d.duvidas = []; return d; }
+  try { const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); if (!Array.isArray(d.perguntas)) d.perguntas = []; if (!Array.isArray(d.mensagens)) d.mensagens = []; if (!d.contador) d.contador = 1; if (!Array.isArray(d.usuarios)) d.usuarios = []; if (!Array.isArray(d.professores)) d.professores = []; if (!Array.isArray(d.duvidas)) d.duvidas = []; if (!Array.isArray(d.bancoPerguntas)) d.bancoPerguntas = JSON.parse(JSON.stringify(BANCO)); if (!d.contador || d.contador < 100) d.contador = 100; return d; }
   catch { return seed(); }
 }
 let db = carregar();
@@ -200,8 +201,42 @@ const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=u
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const rota = url.pathname;
-  if (rota === "/api/health") return enviar(res, 200, { ok: true, servico: "inteligencia-medica", versao: "v2", aulas: AULAS.length, perguntas: db.perguntas.length, duvidasPublicadas: db.duvidas.filter((d) => d.publicada).length, usuarios: db.usuarios.length, usuariosAprovados: db.usuarios.filter((u) => u.status === "aprovado").length, mensagens: db.mensagens.length, ia_configurada: Boolean(process.env.GEMINI_API_KEY), modelo_ia: MODELO_IA, onlineNaSala: [...peers.values()].filter((p) => p.sala === SALA).length });
+  if (rota === "/api/health") return enviar(res, 200, { ok: true, servico: "inteligencia-medica", versao: "v3", aulas: AULAS.length, assuntos: ASSUNTOS.length, bancoPerguntas: db.bancoPerguntas.length, perguntas: db.perguntas.length, duvidasPublicadas: db.duvidas.filter((d) => d.publicada).length, usuarios: db.usuarios.length, usuariosAprovados: db.usuarios.filter((u) => u.status === "aprovado").length, mensagens: db.mensagens.length, ia_configurada: Boolean(process.env.GEMINI_API_KEY), modelo_ia: MODELO_IA, onlineNaSala: [...peers.values()].filter((p) => p.sala === SALA).length });
   if (rota === "/api/aulas") return enviar(res, 200, { ok: true, aulas: AULAS });
+  // v3 — Assuntos e Banco de Perguntas e Respostas (base de dados elaborada).
+  if (req.method === "GET" && rota === "/api/assuntos") return enviar(res, 200, { ok: true, assuntos: ASSUNTOS.map((a) => ({ ...a, perguntas: db.bancoPerguntas.filter((q) => q.assunto === a.id).length })) });
+  if (req.method === "GET" && rota.startsWith("/api/assuntos/")) {
+    const a = ASSUNTOS.find((x) => x.id === rota.split("/")[3]);
+    if (!a) return enviar(res, 404, { ok: false, erro: "Assunto não encontrado." });
+    return enviar(res, 200, { ok: true, assunto: a, perguntas: db.bancoPerguntas.filter((q) => q.assunto === a.id), aulas: AULAS.filter((x) => a.aulasRelacionadas.includes(x.id)) });
+  }
+  function filtrarBanco(q, assunto, nivel) {
+    const termo = (q || "").toLowerCase();
+    return db.bancoPerguntas.filter((x) => {
+      if (assunto && x.assunto !== assunto) return false;
+      if (nivel && nivel !== "Todos" && x.nivel !== nivel) return false;
+      if (!termo) return true;
+      return [x.pergunta, x.resposta, x.cruzamento, (x.tags || []).join(" "), x.assunto].join(" ").toLowerCase().includes(termo);
+    });
+  }
+  if (req.method === "GET" && rota === "/api/banco-perguntas") {
+    const lista = filtrarBanco(url.searchParams.get("q") || "", url.searchParams.get("assunto") || "", url.searchParams.get("nivel") || "");
+    return enviar(res, 200, { ok: true, total: lista.length, perguntas: lista });
+  }
+  if (req.method === "GET" && rota.startsWith("/api/banco-perguntas/")) {
+    const q = db.bancoPerguntas.find((x) => x.id === Number(rota.split("/")[3]));
+    if (!q) return enviar(res, 404, { ok: false, erro: "Pergunta não encontrada no banco." });
+    return enviar(res, 200, { ok: true, pergunta: q, assunto: ASSUNTOS.find((a) => a.id === q.assunto) || null });
+  }
+  if (req.method === "POST" && rota === "/api/professor/banco-perguntas") {
+    if (!profDaSessao(req)) return enviar(res, 401, { ok: false, erro: "Área do professor: faça login." });
+    const b = await lerCorpo(req);
+    const fontes = String(b.fontes || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    if (!limpo(b.pergunta, 1000) || !limpo(b.resposta, 5000) || fontes.length < 1 || !limpo(b.cruzamento, 2000) || !limpo(b.confianca, 20)) return enviar(res, 400, { ok: false, erro: "Para entrar no banco, preencha pergunta, resposta, pelo menos uma fonte, cruzamento de dados e confiança." });
+    const q = { id: db.contador++, assunto: limpo(b.assunto, 80) || "fundamentos", nivel: limpo(b.nivel, 20) || "Todos", pergunta: limpo(b.pergunta, 1000), resposta: limpo(b.resposta, 5000), fontes, cruzamento: limpo(b.cruzamento, 2000), confianca: limpo(b.confianca, 20), tags: String(b.tags || "").split(",").map((x) => x.trim()).filter(Boolean), aulaRelacionada: Number(b.aulaRelacionada) || null, origem: "professor", em: new Date().toISOString() };
+    db.bancoPerguntas.push(q); salvar();
+    return enviar(res, 201, { ok: true, pergunta: q });
+  }
   if (rota === "/api/sala") return enviar(res, 200, { ok: true, sala: { codigo: SALA, titulo: "Sala de Aula — Inteligência Médica", acesso: "conta_aprovada", acessoProtegido: true, online: [...peers.values()].filter((p) => p.sala === SALA).map((p) => p.nome), link: "/#sala" }, mensagens: salaTokens.has(url.searchParams.get("token")) ? db.mensagens.slice(-50) : [] });
   // Entrada na sala só para conta aprovada (usuário) ou professor logado.
   if (req.method === "POST" && rota === "/api/sala/entrar-usuario") {
@@ -330,7 +365,9 @@ const server = http.createServer(async (req, res) => {
     if (!limpo(b.resposta, 5000) || fontes.length < 1 || !limpo(b.cruzamento, 2000) || !limpo(b.confianca, 20)) return enviar(res, 400, { ok: false, erro: "Para publicar, preencha resposta, pelo menos uma fonte científica, cruzamento de dados e confiança. Sem isso, a dúvida não é publicada." });
     d.resposta = limpo(b.resposta, 5000); d.fontes = fontes; d.cruzamento = limpo(b.cruzamento, 2000); d.confianca = limpo(b.confianca, 20); d.publicada = true; d.respondidoEm = new Date().toISOString();
     const envioResposta = await notificarEmail(d.email, "Resposta à sua dúvida — Inteligência Médica", `Olá ${d.nome},\n\nSua dúvida:\n${d.duvida}\n\nResposta do professor:\n${d.resposta}\n\nEmbasamento científico:\n${fontes.map((f) => `- ${f}`).join("\n")}\n\nCruzamento de dados:\n${d.cruzamento}\n\nConfiança: ${d.confianca}\n\nA resposta também está publicada em Tire suas dúvidas. A IA apoia, o médico decide.`);
-    d.respostaEnviadaParaUsuario = envioResposta.enviado; salvar();
+    d.respostaEnviadaParaUsuario = envioResposta.enviado;
+    if (!db.bancoPerguntas.find((q) => q.pergunta === d.duvida)) db.bancoPerguntas.push({ id: db.contador++, assunto: (ASSUNTOS.find((a) => a.nome.toLowerCase().includes((d.especialidade || "").toLowerCase().slice(0, 8)))?.id) || "fundamentos", nivel: "Todos", pergunta: d.duvida, resposta: d.resposta, fontes, cruzamento: d.cruzamento, confianca: d.confianca, tags: ["duvida-publicada"], aulaRelacionada: null, origem: "duvida-publicada", em: new Date().toISOString() });
+    salvar();
     return enviar(res, 200, { ok: true, duvida: d, respostaEnviadaParaUsuario: envioResposta.enviado, avisoEmail: envioResposta.enviado ? "" : "Resposta publicada na página, mas o envio por e-mail não foi concluído (" + envioResposta.motivo + "). Use o botão de responder por e-mail na área do professor." });
   }
   if (req.method === "GET" && rota === "/api/perguntas") return enviar(res, 200, { ok: true, perguntas: [...db.perguntas].reverse() });
@@ -377,4 +414,4 @@ server.on("upgrade", (req, socket) => {
   socket.on("close", sair); socket.on("error", sair);
 });
 
-server.listen(PORT, () => console.log(`Inteligência Médica v2 em http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Inteligência Médica v3 em http://localhost:${PORT}`));
